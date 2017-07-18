@@ -40,9 +40,6 @@ typedef unsigned char uchar;
 #else
 #   define BITNESS 1
 #endif
-#ifdef __X64__
-#   define PIN_64
-#endif
 #else
 // PIN specific declarations
 #   define pin_strncpy  strncpy

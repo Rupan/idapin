@@ -92,7 +92,7 @@ TOOLS := $(TOOL_ROOTS:%=$(F)%$(BITNESS)$(PINTOOL_SUFFIX))
 
 ifdef __LINT__
 
-tools: $(OBJTOOLS)
+tools: $(OBJTOOLS) $(PIN_ROOT)/pin$(B)
 
 ifeq ($(TARGET),ia32)
   LINT_TARGET = /DTARGET_IA32 /DHOST_IA32
@@ -123,7 +123,8 @@ $(TOOLS): $(OBJTOOLS)
 
 endif
 
-$(OBJTOOLS) : idadbg.cpp makefile $(MAKECONF) idadbg.h idadbg_local.h | $(OUTDIR)
+# add dependency on $(PIN_ROOT)/README to force rebuild in case of PIN upgrade
+$(OBJTOOLS) : idadbg.cpp makefile $(MAKECONF) idadbg.h idadbg_local.h $(PIN_ROOT)/README | $(OUTDIR)
 	$(CXX) $(OBJFLAGS)$@  $<
 
 DISTNAME=idapin

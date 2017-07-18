@@ -6,7 +6,6 @@
 
 //lint +linebuf
 #include <pin.H>
-#include <portability.H>
 
 #include "idadbg.h"
 #include "idadbg_local.h"
@@ -1770,7 +1769,7 @@ inline bool get_win_meminfo(WINDOWS::MEMORY_BASIC_INFORMATION *mi, ADDRINT ea)
   {
     if ( code != 0 )
       MSG("Unexpected return code from VirtualQuery %d (expected %z)\n",
-                                                    code, sizeof(mi));
+                                                    code, sizeof(*mi));
     return false;
   }
   DEBUG(3, "VirtualQuery(%p): base = %p, size = %zx, protect=0x%x, allocprotect=0x%x, state=0x%x\n", pvoid(ea), mi->BaseAddress, (size_t)mi->RegionSize, mi->Protect, mi->AllocationProtect, mi->State);
@@ -1908,7 +1907,7 @@ static bool read_mapping(FILE *mapfp, mapfp_entry_t *me)
   me->ea1 = BADADDR;
 
   uint32 len = 0;
-  int code = sscanf(line, HEX_FMT"-"HEX_FMT" %s "HEX_FMT" %s " HEX64T_FMT "x%n",
+  int code = sscanf(line, HEX_FMT "-" HEX_FMT " %s " HEX_FMT " %s " HEX64T_FMT "x%n",
                      &me->ea1,
                      &me->ea2,
                      me->perm,
@@ -2214,11 +2213,17 @@ static bool get_segbase(ADDRINT *base, THREADID tid_local, ADDRINT segval)
     return false;
 
   CONTEXT *ctx = tdata->get_ctx();
-  if ( segval == PIN_GetContextReg(ctx, REG_SEG_GS) )
+  ADDRINT gs = PIN_GetContextReg(ctx, REG_SEG_GS);
+  ADDRINT fs = PIN_GetContextReg(ctx, REG_SEG_FS);
+  DEBUG(2, "get_segbase: gs=%p, fs=%p\n", (void *)gs, (void *)fs);
+  if ( segval == gs )
   {
     *base = PIN_GetContextReg(ctx, REG_SEG_GS_BASE);
+    // try FS if GS gave NULL base and both FS and GS have the same value
+    if ( *base != 0 || segval != fs )
+      return true;
   }
-  else if ( segval == PIN_GetContextReg(ctx, REG_SEG_FS) )
+  if ( segval == fs )
   {
     *base = PIN_GetContextReg(ctx, REG_SEG_FS_BASE);
   }
@@ -2503,7 +2508,7 @@ static bool handle_packet(const idapin_packet_t *res)
     case PTT_GET_SEGBASE:
       {
         idapin_segbase_packet_t *pkt = (idapin_segbase_packet_t *)res;
-        THREADID tid_local = get_thread_from_packet(*res);
+        THREADID tid_local = thread_data_t::get_local_thread_id(pkt->tid());
         ADDRINT base;
         if ( get_segbase(&base, tid_local, pkt->value()) )
         {
@@ -2514,6 +2519,8 @@ static bool handle_packet(const idapin_packet_t *res)
         }
         else
         {
+          DEBUG(2, "Get segment base(%x, %x) - FAILED\n",
+                pkt->tid(), int(pkt->value()));
           ans.code = PTT_ERROR;
         }
         ret = pin_send(&ans, sizeof(idapin_packet_t), __FUNCTION__);
@@ -2766,7 +2773,7 @@ int main(int argc, char * argv[])
   {
     debug_level = value;
     open_console();
-    MSG("IDA PIN Tool version $Revision: #158 $\nInitializing PIN tool...\n\n");
+    MSG("IDA PIN Tool version $Revision: #159 $\nInitializing PIN tool...\n\n");
   }
 
   DEBUG(2, "IDA PIN Tool started (debug level=%d)\n", debug_level);
