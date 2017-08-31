@@ -135,7 +135,6 @@ enum pin_tev_type_t
 // Hardware breakpoint types. Fire the breakpoint upon:
 typedef int bpttype_t;
 const bpttype_t
-  BPT_OLD_EXEC = 0,             // (obsolute: execute instruction)
   BPT_WRITE    = 1,             // Write access
   BPT_READ     = 2,             // Read access
   BPT_RDWR     = 3,             // Read/write access
@@ -289,12 +288,12 @@ struct memimages_pkt_t
 struct pin_memory_info_t
 {
   pin_memory_info_t(uint64 startea = 0, uint64 endea = 0, uchar _perm = 0)
-    : startEA(startea), endEA(endea), reserved(0), bitness(BITNESS), perm(_perm)
+    : start_ea(startea), end_ea(endea), reserved(0), bitness(BITNESS), perm(_perm)
   {
     name[0] = '\0';
   }
-  uint64   startEA;
-  uint64   endEA;
+  uint64   start_ea;
+  uint64   end_ea;
   uint32   reserved;
   char   name[MAXSTR];         // Memory area name
   uchar  bitness;              // Number of bits in segment addresses (0-16bit, 1-32bit, 2-64bit)

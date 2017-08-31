@@ -4,8 +4,15 @@
 
 */
 
+#ifdef __LINT__
+// manualy include PIN-specific types in case of LINT
+#include "crt/include/types.h"
+#endif
+
 //lint +linebuf
+//lint -e1075  Ambiguous reference to symbol
 #include <pin.H>
+//lint +e1075
 
 #include "idadbg.h"
 #include "idadbg_local.h"
@@ -52,14 +59,26 @@
 
 //--------------------------------------------------------------------------
 // Command line switches
-KNOB<int> knob_ida_port(KNOB_MODE_WRITEONCE, "pintool",
-    "p", "23946", "Port where IDA Pro is listening for incoming PIN tool's connections");
+KNOB<int> knob_ida_port(
+        KNOB_MODE_WRITEONCE,
+        "pintool",
+        "p",
+        "23946",
+        "Port where IDA Pro is listening for incoming PIN tool's connections");
 
-KNOB<int> knob_connect_timeout(KNOB_MODE_WRITEONCE, "pintool",
-    "T", "0", "How many seconds wait for client connection (in seconds, 0 - wait for forever)");
+KNOB<int> knob_connect_timeout(
+        KNOB_MODE_WRITEONCE,
+        "pintool",
+        "T",
+        "0",
+        "How many seconds wait for client connection (in seconds, 0 - wait for forever)");
 
-KNOB<int> knob_debug_mode(KNOB_MODE_WRITEONCE, "pintool",
-    "idadbg", "0", "Debug mode");
+KNOB<int> knob_debug_mode(
+        KNOB_MODE_WRITEONCE,
+        "pintool",
+        "idadbg",
+        "0",
+        "Debug mode");
 
 //--------------------------------------------------------------------------
 int pin_client_version;       // client version (from 'HELLO' packet)
@@ -366,10 +385,10 @@ private:
   // can dramatically slow down the execution so we will try to get rid
   // of such pending breakpoints as soon as possible
   addrset_t pending_bpts;
-  // thread ID of the last dbg_set_resume_mode request
-  THREADID stepping_thread;
   // this lock controls access to breakpoints
   PIN_LOCK bpt_lock;
+  // thread ID of the last dbg_set_resume_mode request
+  THREADID stepping_thread;
   // true if we need to reinstrument just after resume
   bool need_reinst;
 };
@@ -659,7 +678,7 @@ inline bool process_suspended()
 }
 
 //--------------------------------------------------------------------------
-inline       char *tail(      char *in_str) { return strchr(in_str, '\0'); }
+inline char *tail(char *in_str) { return strchr(in_str, '\0'); }
 inline const char *tail(const char *in_str) { return strchr(in_str, '\0'); }
 
 //--------------------------------------------------------------------------
@@ -1076,7 +1095,7 @@ static int (WSAAPI *p_WSAStartup)(WINDOWS::WORD, WINDOWS::WSADATA *);
 static int (WSAAPI *p_WSAGetLastError)(void);
 static WINDOWS::SOCKET (WSAAPI *p_socket)(int af, int type, int protocol);
 static int (WSAAPI *p_bind)(WINDOWS::SOCKET, const struct WINDOWS::sockaddr *, int );
-static int (WSAAPI *p_setsockopt)(WINDOWS::SOCKET, int, int , const char *optval, int optlen);
+static int (WSAAPI *p_setsockopt)(WINDOWS::SOCKET, int, int, const char *optval, int optlen);
 static int (WSAAPI *p_listen)(WINDOWS::SOCKET s, int backlog);
 static WINDOWS::SOCKET (WSAAPI *p_accept)(WINDOWS::SOCKET, struct WINDOWS::sockaddr *, int *);
 static int (WSAAPI *p_recv)(WINDOWS::SOCKET s, char *buf, int len, int flags);
@@ -1453,12 +1472,12 @@ static VOID app_start_cb(VOID *)
 
 //--------------------------------------------------------------------------
 static VOID context_change_cb(
-  THREADID tid,
-  CONTEXT_CHANGE_REASON reason,
-  const CONTEXT *ctxt_from,
-  CONTEXT *ctxt_to,
-  INT32 sig,
-  VOID *)
+        THREADID tid,
+        CONTEXT_CHANGE_REASON reason,
+        const CONTEXT *ctxt_from,
+        CONTEXT *ctxt_to,
+        INT32 sig,
+        VOID *)
 {
   pin_local_event_t ev(EXCEPTION, tid);
   pin_debug_event_t &event = ev.debev;
@@ -1529,10 +1548,10 @@ static VOID context_change_cb(
 //lint -e{818} Pointer parameter 'ctxt' could be declared as pointing to const
 //                            'ex_info' could be declared as pointing to const
 static EXCEPT_HANDLING_RESULT internal_excp_cb(
-  THREADID tid,
-  EXCEPTION_INFO *ex_info,
-  PHYSICAL_CONTEXT *ctxt,
-  VOID * /* v */)
+        THREADID tid,
+        EXCEPTION_INFO *ex_info,
+        PHYSICAL_CONTEXT *ctxt,
+        VOID * /* v */)
 {
   pin_local_event_t ev(EXCEPTION, tid);
   pin_debug_event_t &event = ev.debev;
@@ -1666,6 +1685,9 @@ static void handle_start_process(void)
 
   events.init();
 
+  // Init symbol table
+  PIN_InitSymbols();
+
   // Register image_load_cb to be called when an image is loaded
   IMG_AddInstrumentFunction(image_load_cb, 0);
 
@@ -1705,8 +1727,7 @@ static void handle_start_process(void)
   if ( !instrumenter_t::init() )
     exit(-1);
 
-  // Init symbol table & start the program, never returns
-  PIN_InitSymbols();
+  // Start the program, never returns
   PIN_StartProgram();
 }
 
@@ -1716,15 +1737,15 @@ static void add_segment(pin_meminfo_vec_t *miv, pin_memory_info_t &mi)
   pin_meminfo_vec_t::reverse_iterator p;
   for ( p = miv->rbegin(); p != miv->rend(); ++p )
   {
-    if ( p->startEA == mi.startEA )
+    if ( p->start_ea == mi.start_ea )
     {
       DEBUG(3, "add_segment: skip existing segment %s/%p\n",
-                              p->name, pvoid(mi.startEA));
+                              p->name, pvoid(mi.start_ea));
       return;
     }
 
     // if we found the correct position insert it
-    if ( p->endEA <= mi.startEA )
+    if ( p->end_ea <= mi.start_ea )
     {
       miv->insert(p.base(), mi);
       return;
@@ -1797,8 +1818,8 @@ static ADDRINT get_win_reginfo(pin_meminfo_vec_t *miv, ADDRINT ea, ADDRINT end)
   }
 
   pin_memory_info_t mi(startea, endea, win_prot_to_ida_perm(meminfo.Protect));
-  if ( mi.endEA > end )
-    mi.endEA = end;
+  if ( mi.end_ea > end )
+    mi.end_ea = end;
   miv->push_back(mi);
   return endea;
 }
@@ -1838,10 +1859,10 @@ inline bool get_win_segment_protection(int *prot, ADDRINT ea)
 inline void add_thread_segment(pin_meminfo_vec_t *miv, pin_memory_info_t &mi)
 {
   int prot;
-  if ( get_win_segment_protection(&prot, mi.startEA) )
+  if ( get_win_segment_protection(&prot, mi.start_ea) )
     mi.perm = win_prot_to_ida_perm(prot);
   DEBUG(3, "add_thread_segment(%s, %p-%p (prot=%x)\n",
-           mi.name, pvoid(mi.startEA), pvoid(mi.endEA), prot);
+           mi.name, pvoid(mi.start_ea), pvoid(mi.end_ea), prot);
   add_segment(miv, mi);
 }
 
@@ -1862,8 +1883,8 @@ static void get_os_segments(pin_meminfo_vec_t &miv)
   ADDRINT prev_ea = 0;
   for ( pin_meminfo_vec_t::iterator p = miv.begin(); p != miv.end(); ++p )
   {
-    get_win_regions(&miv1, prev_ea, p->startEA);
-    prev_ea = p->endEA;
+    get_win_regions(&miv1, prev_ea, p->start_ea);
+    prev_ea = p->end_ea;
   }
   get_win_regions(&miv1, prev_ea, total_vm);
 
@@ -1943,7 +1964,7 @@ static void get_os_segments(pin_meminfo_vec_t &miv)
     // ignore them
     size_t i;
     for ( i=0; i < miv.size(); i++ )
-      if ( miv[i].startEA == me.ea1 )
+      if ( miv[i].start_ea == me.ea1 )
         break;
     if ( i != miv.size() )
       continue;
@@ -1952,8 +1973,8 @@ static void get_os_segments(pin_meminfo_vec_t &miv)
     if ( me.fname != "pinbin" )
     {
       pin_memory_info_t mi;
-      mi.startEA = me.ea1;
-      mi.endEA   = me.ea2;
+      mi.start_ea = me.ea1;
+      mi.end_ea   = me.ea2;
       pin_strncpy(mi.name, me.fname.c_str(), sizeof(mi.name));
       mi.bitness = BITNESS;
 
@@ -1991,14 +2012,14 @@ static bool handle_memory_info(void)
       ea_t sec_ea = SEC_Address(sec);
       if ( sec_ea != 0 )
       {
-        mi.startEA = sec_ea;
-        mi.endEA   = sec_ea + SEC_Size(sec);
+        mi.start_ea = sec_ea;
+        mi.end_ea   = sec_ea + SEC_Size(sec);
 
         if ( img_min_ea == 0 || img_min_ea > sec_ea )
           img_min_ea = sec_ea;
 
-        if ( img_max_ea == 0 || img_max_ea < mi.endEA )
-          img_max_ea = mi.endEA;
+        if ( img_max_ea == 0 || img_max_ea < mi.end_ea )
+          img_max_ea = mi.end_ea;
 
         string sec_name;
         sec_name = IMG_Name(img) + ":" + SEC_Name(sec);
@@ -2615,7 +2636,6 @@ static bool handle_packet(const idapin_packet_t *res)
       break;
     default:
       MSG("UNKNOWN PACKET RECEIVED WITH CODE %d\n", res->code);
-      last_packet = "UNKNOWN " + res->code;
       break;
   }
   DEBUG(4, "LAST PACKET WAS %s\n", last_packet);
@@ -2732,7 +2752,7 @@ static void open_console(void)
     // so do not call freopen() for in case of 32bit here because it looks like
     // the console output works even better without these calls
 #if defined(PIN_64)
-    if ( freopen("CONIN$" , "rb", stdin) == NULL )
+    if ( freopen("CONIN$", "rb", stdin) == NULL )
       error_msg("CONIN");
     if ( freopen("CONOUT$", "wb", stdout) == NULL )
       error_msg("CONOUT");
@@ -3380,7 +3400,7 @@ inline void ev_queue_t::push_front(const pin_local_event_t &ev)
 // send PROCESS_ATTACH until all threads are reported or timeout (1sec) expired
 inline uint32 get_initial_thread_count()
 {
-  static time_t started = 0;
+  static time_t started = 0;    //-V795 year 2038
   if ( started == 0 )
   {
     time(&started);
@@ -3388,7 +3408,7 @@ inline uint32 get_initial_thread_count()
   }
   else
   {
-    time_t curr;
+    time_t curr;    //-V795 year 2038
     time(&curr);
     if ( curr > started )
       return 0;       // timeout (1sec): return minimal number
@@ -4269,9 +4289,9 @@ ADDRINT instrumenter_t::rtn_enabled(VOID *)
 // This function is called before an instruction is executed
 // (used for both instruction and bbl tracing modes)
 VOID PIN_FAST_ANALYSIS_CALL instrumenter_t::ins_logic_cb(
-  const CONTEXT *ctx,
-  VOID *ip,
-  pin_tev_type_t tev_type)
+        const CONTEXT *ctx,
+        VOID *ip,
+        pin_tev_type_t tev_type)
 {
   if ( check_address((ADDRINT)ip, tev_type) )
     add_to_trace(ctx, (ADDRINT)ip, tev_type);
@@ -4282,10 +4302,10 @@ VOID PIN_FAST_ANALYSIS_CALL instrumenter_t::ins_logic_cb(
 // ins_ip    - address of instruction itself
 // target_ip - address of target instruction our instruction passes control to
 VOID PIN_FAST_ANALYSIS_CALL instrumenter_t::rtn_logic_cb(
-  ADDRINT ins_ip,
-  ADDRINT target_ip,
-  BOOL /* is_indirect */,
-  BOOL is_ret)
+        ADDRINT ins_ip,
+        ADDRINT target_ip,
+        BOOL /* is_indirect */,
+        BOOL is_ret)
 {
   if ( check_address(ins_ip) )
   {
@@ -4324,9 +4344,9 @@ uint32 instrumenter_t::curr_trace_types()
 
 //--------------------------------------------------------------------------
 inline void instrumenter_t::add_to_trace(
-  const CONTEXT *ctx,
-  ADDRINT ea,
-  pin_tev_type_t tev_type)
+        const CONTEXT *ctx,
+        ADDRINT ea,
+        pin_tev_type_t tev_type)
 {
   DEBUG(3, "add_to_trace1: Adding instruction at %p\n", pvoid(ea));
   store_trace_entry(ctx, ea, tev_type);
@@ -4342,9 +4362,9 @@ inline void instrumenter_t::add_to_trace(ADDRINT ea, pin_tev_type_t tev_type)
 
 //--------------------------------------------------------------------------
 inline void instrumenter_t::store_trace_entry(
-  const CONTEXT *ctx,
-  ADDRINT ea,
-  pin_tev_type_t tev_type)
+        const CONTEXT *ctx,
+        ADDRINT ea,
+        pin_tev_type_t tev_type)
 {
   // wait until the tracebuf is read if it's full
   app_wait(&tracebuf_sem);
@@ -4504,9 +4524,9 @@ inline bool instrumenter_t::check_address(ADDRINT addr, pin_tev_type_t type)
 
 //--------------------------------------------------------------------------
 bool instrumenter_t::set_limits(
-  bool only_new,
-  uint32 enq_size,
-  const char *imgname)
+        bool only_new,
+        uint32 enq_size,
+        const char *imgname)
 {
   only_new_instructions = only_new;
   enqueue_limit = enq_size;

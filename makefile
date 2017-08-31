@@ -92,7 +92,7 @@ TOOLS := $(TOOL_ROOTS:%=$(F)%$(BITNESS)$(PINTOOL_SUFFIX))
 
 ifdef __LINT__
 
-tools: $(OBJTOOLS) $(PIN_ROOT)/pin$(B)
+tools: $(OBJTOOLS)
 
 ifeq ($(TARGET),ia32)
   LINT_TARGET = /DTARGET_IA32 /DHOST_IA32
@@ -100,6 +100,14 @@ else
   LINT_TARGET = /DTARGET_IA32E /DHOST_IA32E
 endif
 LINT_FLAGS = /D__PIN__=1 /D__i386__ /DTARGET_WINDOWS $(LINT_TARGET) \
+						 /D_WINDOWS_H_PATH_ \
+             /I$(PIN_ROOT)/extras/crt \
+             /I$(PIN_ROOT)/extras/crt/include \
+             /I$(PIN_ROOT)/extras/crt/include/arch-x86 \
+						 /I$(PIN_ROOT)/extras/crt/include/kernel/uapi \
+						 /I$(PIN_ROOT)/extras/crt/include/kernel/uapi/asm-x86 \
+             /I$(PIN_ROOT)/extras/xed-ia32/include/xed \
+						 /FIinclude/msvc_compat.h \
              $(COMPONENT_INCLUDES)  /I$(MSSDK)/include \
              /I$(PIN_ROOT)/source/include/pin \
              /I$(PIN_ROOT)/source/include/pin/gen \
