@@ -91,12 +91,12 @@ static PIN_SOCKET srv_socket, cli_socket;
 // internal thread identifier
 static PIN_THREAD_UID listener_uid;
 // this lock prevents listener thread to start serving of requests
-PIN_LOCK start_listener_lock;
+static PIN_LOCK start_listener_lock;
 // flag: has internal listener thread really started?
 static bool listener_ready = false;
 // this lock protects 'listener_ready' flag: a thread should acquire it
 // when is going to communicate with IDA
-PIN_LOCK listener_ready_lock;
+static PIN_LOCK listener_ready_lock;
 
 //--------------------------------------------------------------------------
 // Handle IDA requests
@@ -168,8 +168,8 @@ static pin_local_event_t start_ev;
 class thread_data_t
 {
 public:
-  // to get PIN_StopApplicationThreads() chance to pass we interrupt waiting
-  // on semaphores and call ExecuteAt() from analysis routines.
+  // to get PIN_StopApplicationThreads() chance to catch safe points
+  // we periodically call ExecuteAt() from analysis routines.
   // the following type denotes whether restart is requested and
   // where restart has been issued from (if it has)
   enum restart_mode_t
@@ -212,7 +212,7 @@ public:
   inline bool add_thread_areas(pin_meminfo_vec_t *miv);
 
   static int nthreads()                { return thread_cnt;   }
-  static int nactive_threads()         { return active_threads_cnt;   }
+  static int n_active_threads()        { return active_threads_cnt;   }
   static int nsuspended()              { return suspeded_cnt; }
   static bool have_suspended_threads() { return suspeded_cnt != 0; }
   static bool all_threads_suspended()  { return thread_cnt != 0 && suspeded_cnt == thread_cnt; }
@@ -229,6 +229,7 @@ public:
   static inline THREADID get_local_thread_id(pin_thid tid_ext);
   static inline void restart_threads_for_suspend();
   static inline void resume_threads_after_suspend();
+  static inline bool has_stoppable_threads();
 
   static inline thread_data_t *get_any_stopped_thread(THREADID *tid);
 
@@ -271,6 +272,7 @@ private:
   bool ev_handled;         // true if the last exception was hanlded by debugger
   bool started;
   bool is_phys;
+  bool is_stoppable;             // can be stopped by PIN_StopApplicationThreads
   static int thread_cnt;         // number of thread_data_t objects
   static int active_threads_cnt; // number of active threads
   static int suspeded_cnt;
@@ -409,6 +411,7 @@ public:
   inline void pause_threads();
   bool resume_threads();
   inline void copy_pending_events(THREADID curr_tid = INVALID_THREADID);
+  inline void wakeup();
 
 private:
   enum state_t
@@ -426,6 +429,7 @@ private:
   inline void add_pending_event(const pin_local_event_t &ev);
   void thread_worker();
   static VOID thread_hnd(VOID *ud);
+  inline bool can_stop_app_threads() const;
 
   event_list_t pending_events;
   PIN_LOCK lock;
@@ -777,7 +781,7 @@ inline bool pop_debug_event(pin_local_event_t *out_ev, bool *can_resume)
   {
     out_ev->debev.tid = thread_data_t::get_ext_thread_id(out_ev->tid_local);
   }
-  else
+  else if ( out_ev->debev.eid != NO_EVENT )
   {
     thread_data_t *td = thread_data_t::get_any_stopped_thread(&out_ev->tid_local);
     if ( td == NULL )
@@ -893,8 +897,8 @@ static VOID fini_cb(INT32 code, VOID *)
 // This function is called when the application exits
 static VOID prepare_fini_cb(VOID *)
 {
-  DEBUG(2, "PREPARE_FINI (thread = %d/main=%d)\n",
-        thread_data_t::get_thread_id(), main_thread);
+  THREADID thr = thread_data_t::get_thread_id();
+  DEBUG(2, "PREPARE_FINI (thread = %d/main=%d)\n", thr, main_thread);
   // THREAD_EXIT, PROCESS_EXIT events should be sent after all other ones -
   // move them from suspender to the listener queue
   suspender.copy_pending_events();
@@ -912,12 +916,17 @@ static VOID prepare_fini_cb(VOID *)
     PIN_Sleep(1);
   // generate artifical THREAD_EXIT and PROCESS_EXIT events
   int fake_code = 0;
-  pin_local_event_t exit_thr_ev(THREAD_EXIT, thread_data_t::get_thread_id());
+  pin_local_event_t exit_thr_ev(THREAD_EXIT, thr);
   exit_thr_ev.debev.exit_code = fake_code;
   enqueue_event(exit_thr_ev);
-  pin_local_event_t exit_ev(PROCESS_EXIT, thread_data_t::get_thread_id());
+  pin_local_event_t exit_ev(PROCESS_EXIT, thr);
   exit_ev.debev.exit_code = fake_code;
   enqueue_event(exit_ev);
+  // add the last empty event for read_handle_packet to be able to send ACK for
+  // the last event (PROCESS_EXIT), otherwise we can hang on Win10
+  pin_local_event_t last_empty_ev(NO_EVENT, INVALID_THREADID);
+  enqueue_event(last_empty_ev);
+
   // send remaining events
   while ( !events.empty() )
     if ( !read_handle_packet() )
@@ -1069,6 +1078,7 @@ static VOID thread_fini_cb(THREADID tid, const CONTEXT *ctx, INT32 code, VOID *)
 
   pin_local_event_t ev(THREAD_EXIT, tid, get_ctx_ip(ctx));
   ev.debev.exit_code = code;
+  tdata->set_finished();
   DEBUG(2, "THREAD FINISH: %d AT %p\n", tid, pvoid(ev.debev.ea));
 
   if ( suspend_at_event(ev, tid == main_thread) )
@@ -1586,17 +1596,37 @@ static EXCEPT_HANDLING_RESULT internal_excp_cb(
 }
 
 //--------------------------------------------------------------------------
+// only one thread can serve requests at each point in time, use for this
+// the first one the control was passed to.
+static THREADID serving_thread = INVALID_THREADID;
+static PIN_LOCK serving_thread_lock;
+
+//--------------------------------------------------------------------------
 // serve requests synchronously in case the listener thread is not started yet
 static bool serve_sync(void)
 {
+  THREADID thr = thread_data_t::get_thread_id();
+  {
+    janitor_for_pinlock_t process_state_guard(&serving_thread_lock);
+    if ( serving_thread == thr )
+    {
+      MSG("Internal PINTOOL error: wrong serving thread in serve_sync()\n");
+      return false;        // something wrong: recursive call?
+    }
+    if ( serving_thread != INVALID_THREADID )
+      return true;         // another thread is serving reqests
+    serving_thread = thr;  // this thread will be serving requests
+  }
+  bool ok = true;
   while ( true )
   {
-    if ( thread_data_t::get_thread_id() != main_thread )
-      break;  // only one thread can serve requests - let main thread to do this
     {
       janitor_for_pinlock_t process_state_guard(&process_state_lock);
       if ( process_detached() || process_exiting() )
-        return false;
+      {
+        ok = false;
+        break;
+      }
       if ( !(process_pause() || process_suspended()) )
         break;
     }
@@ -1607,9 +1637,15 @@ static bool serve_sync(void)
       break;
     }
     if ( !read_handle_packet() )
-      return false;
+    {
+      ok = false;
+      break;
+    }
   }
-  return true;
+  janitor_for_pinlock_t process_state_guard(&process_state_lock);
+  if ( serving_thread == thr )
+    serving_thread = INVALID_THREADID;    // reset serving thread ID
+  return ok;
 }
 
 //--------------------------------------------------------------------------
@@ -1677,6 +1713,7 @@ static void handle_start_process(void)
   sema_set(&run_app_sem);
 
   PIN_InitLock(&listener_ready_lock);
+  PIN_InitLock(&serving_thread_lock);
 
   // A number of first packets should be processed by the main thread
   // so we prevent listener from serving them
@@ -2823,8 +2860,8 @@ bool thread_data_t::meminfo_changed = false;
 inline thread_data_t::thread_data_t()
   : ctx(NULL), restarted_at(BADADDR),
     ext_tid(NO_THREAD), state_bits(0),
-    ctx_valid(false), ctx_changed(false), can_change_regs(false),
-    susp(false), ev_handled(false), started(false), is_phys(false)
+    ctx_valid(false), ctx_changed(false), can_change_regs(false), susp(false),
+    ev_handled(false), started(false), is_phys(false), is_stoppable(false)
 {
   PIN_SemaphoreInit(&thr_sem);
   PIN_SemaphoreSet(&thr_sem);
@@ -3171,14 +3208,23 @@ inline void thread_data_t::continue_execution(int restarted_from)
     // pointed by IP: so we use "restarted_at" variable to preserve stopping
     // on the same instruction twice
     ctx_changed = false;
+    is_stoppable = false;
     MSG("Thread %d: context is to be changed, apply changes\n", get_ext_tid());
   }
   else if ( (state_bits & RESTART_REQ) != 0 )
   {
+    // should not wait on a semaphore inside an analysis routine because
+    // PIN_StopApplicationThreads() can stop threads only on safe points.
+    // So we make the thread stoppable: periodically call ExecuteAt() to pass
+    // the execution control to the safe point just before the analysis routine
+    // (and so give a chance PIN_StopApplicationThreads to reach the safe point)
+    is_stoppable = true;
+    suspender.wakeup(); // the thread is stoppable, activate the suspender
     DEBUG(2, "Thread %d: should be restarted\n", get_ext_tid());
   }
   else
   {
+    is_stoppable = false;
     state_bits &= ~restarted_from;
     if ( state_bits == 0 )
       set_restart_ea(BADADDR);
@@ -3353,9 +3399,20 @@ inline void thread_data_t::resume_threads_after_suspend()
 }
 
 //--------------------------------------------------------------------------
+inline bool thread_data_t::has_stoppable_threads()
+{
+  janitor_for_pinlock_t plj(&thr_data_lock);
+  for ( thrdata_map_t::iterator p = thr_data.begin(); p != thr_data.end(); ++p )
+    if ( p->second->is_stoppable )
+      return true;
+  return false;
+}
+
+//--------------------------------------------------------------------------
 inline void thread_data_t::resume_after_suspend()
 {
   state_bits &= ~RESTART_REQ;
+  is_stoppable = false;
   if ( susp )
     sema_clear(&thr_sem);
 }
@@ -3715,7 +3772,7 @@ void bpt_mgr_t::add_rtns(INS ins, ADDRINT ins_addr)
     || thread_data_t::have_suspended_threads()
     || !instrumenter_t::instr_state_ok() )
   {
-    // reinstrumented did not start really or
+    // reinstrumenter did not start really or
     // ctrl_rtn is active anyway so we will process pending breakpoints here
     addrset_t::iterator p = pending_bpts.find(ins_addr);
     if ( p != pending_bpts.end() )
@@ -4845,6 +4902,10 @@ bool suspender_t::wait_termination()
 inline void suspender_t::stop_threads(const pin_local_event_t &ev)
 {
   suspend_threads(STOPPING, ev);
+  // not so necessary to wake up the suspender here - it will be done when the
+  // control will reach one of the analysis routines (see continue_execution)
+  // but doing this here can speed up the execution (see can_stop_app_threads)
+  wakeup();
 }
 
 //--------------------------------------------------------------------------
@@ -4852,6 +4913,10 @@ inline void suspender_t::pause_threads()
 {
   pin_local_event_t ev(PROCESS_SUSPEND);
   suspend_threads(PAUSING, ev);
+  // wake up the suspender thread here: otherwise the program can be sleeping
+  // somewhere inside a syscall and the control will not reach in the near
+  // future an analysis routine which would wakeup the suspender
+  wakeup();
 }
 
 //--------------------------------------------------------------------------
@@ -4868,6 +4933,11 @@ void suspender_t::suspend_threads(state_t new_susp_state, const pin_local_event_
   next_process_state = APP_STATE_SUSPENDED;
   state = new_susp_state;
   add_pending_event(ev);
+}
+
+//--------------------------------------------------------------------------
+inline void suspender_t::wakeup()
+{
   sema_set(&sem);
 }
 
@@ -4913,15 +4983,10 @@ void suspender_t::thread_worker()
       DEBUG(3, "Suspender: wait Ok: state = %d\n", state);
       sema_clear(&sem);
       should_stop = state == STOPPING || state == PAUSING;
-      if ( should_stop && pending_events.empty() )
-      {
-        MSG("ERROR: Suspender: empty queue of pending events!\n");
+      if ( should_stop && !can_stop_app_threads() )
         continue;
-      }
     }
-    // PIN_StopApplicationThreads can hang if called
-    // after the all threads have been exited, so check for that
-    if ( thread_data_t::nactive_threads() == 0 || PIN_IsProcessExiting() )
+    if ( thread_data_t::n_active_threads() == 0 || PIN_IsProcessExiting() )
     {
       MSG("Suspender: the program seems to be exiting, exit from the thread\n");
       copy_pending_events(INVALID_THREADID);
@@ -5043,6 +5108,40 @@ void suspender_t::thread_worker()
   }
   MSG("Suspender exited\n");
   thread_uid = INVALID_PIN_THREAD_UID;
+}
+
+//--------------------------------------------------------------------------
+// PIN_StopApplicationThreads can not be invoked (hangs) if there is no working
+// thread. Check that one of the following conditions is true:
+// 1. At least one thread is suspended inside an analysis routine of bpt_mgr_t
+// 2. There is a substantial pending event (e.g. BREAKPOINT, STEP). This
+//    checking is added just to speed up the execution by mininizing number of
+//    ExecuteAt() calls. (It's not quite necessary because such events sooner
+//    or later lead to suspending in the analysis routines).
+// 3. A pause request has been issued. This does not guarantee the existing of
+//    an active thread and there is a risk of hang when a pause request is
+//    issued just before the program termination (but otherwise we will not be
+//    able to pause programs waiting on blocking syscalls)
+// Note there is a thread_data_t::n_active_threads() function but we can't fully
+// rely on it because there is no way to avoid a race condition: a thread
+// can exit between n_active_threads() and PIN_StopApplicationThreads() calls
+inline bool suspender_t::can_stop_app_threads() const
+{
+  if ( pending_events.empty() )
+  {
+    MSG("ERROR: Suspender: empty queue of pending events!\n");
+    return false;
+  }
+  if ( state == PAUSING )
+    return true;            // a pause request has been issued
+  if ( thread_data_t::has_stoppable_threads() )
+    return true;            // a thread is suspended inside an analysis routine
+  event_list_t::const_iterator p;
+  for ( p = pending_events.begin(); p != pending_events.end(); ++p )
+    if ( p->debev.eid == BREAKPOINT || p->debev.eid == STEP )
+      return true;          // there is a substantial pending event
+  DEBUG(2, "Suspender: no substantial events - do not stop!\n");
+  return false;
 }
 
 //--------------------------------------------------------------------------
