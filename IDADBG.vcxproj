@@ -114,7 +114,7 @@
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <Link>
-      <AdditionalOptions>/export:main %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/export:main /PDBALTPATH:%_PDB% %(AdditionalOptions)</AdditionalOptions>
       <AdditionalDependencies>../../..//ia32/runtime/pincrt/crtbeginS.obj;pin.lib;xed.lib;pinvm.lib;stlport-static.lib;m-static.lib;c-static.lib;os-apis.lib;ntdll-32.lib;kernel32.lib;ntdll-32.lib;kernel32.lib</AdditionalDependencies>
       <AdditionalLibraryDirectories>../../../ia32/lib;../../../ia32/lib-ext;../../../ia32/runtime/pincrt;../../../extras/xed-ia32/lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
@@ -154,9 +154,10 @@
       <DisableSpecificWarnings>4530;%(DisableSpecificWarnings)</DisableSpecificWarnings>
       <ForcedIncludeFiles>include\msvc_compat.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <ProgramDataBaseFileName>$(IntDir)vc$(PlatformToolsetVersion)64.pdb</ProgramDataBaseFileName>
     </ClCompile>
     <Link>
-      <AdditionalOptions>/export:main %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/export:main /PDBALTPATH:idadbg64.pdb %(AdditionalOptions)</AdditionalOptions>
       <AdditionalDependencies>../../../intel64/runtime/pincrt/crtbeginS.obj;pin.lib;xed.lib;pinvm.lib;stlport-static.lib;m-static.lib;c-static.lib;os-apis.lib;ntdll-64.lib;kernel32.lib</AdditionalDependencies>
       <AdditionalLibraryDirectories>../../../intel64/lib;../../../intel64/lib-ext;../../../intel64/runtime/pincrt;../../../extras/xed-intel64/lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
@@ -170,6 +171,8 @@
       <AllowIsolation>true</AllowIsolation>
       <AddModuleNamesToAssembly>%(AddModuleNamesToAssembly)</AddModuleNamesToAssembly>
       <ImageHasSafeExceptionHandlers>false</ImageHasSafeExceptionHandlers>
+      <OutputFile>$(OutDir)$(TargetName)64$(TargetExt)</OutputFile>
+      <ProgramDatabaseFile>$(OutDir)$(TargetName)64.pdb</ProgramDatabaseFile>
     </Link>
     <CustomBuildStep>
       <Command>copy $(ProjectDir)\*.* c:\idasrc\current\dbg\common\pin\</Command>
@@ -201,7 +204,7 @@
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <Link>
-      <AdditionalOptions>/export:main %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/export:main /PDBALTPATH:%_PDB% %(AdditionalOptions)</AdditionalOptions>
       <AdditionalDependencies>../../..//ia32/runtime/pincrt/crtbeginS.obj;pin.lib;xed.lib;pinvm.lib;stlport-static.lib;m-static.lib;c-static.lib;os-apis.lib;ntdll-32.lib;kernel32.lib;kernel32.lib</AdditionalDependencies>
       <AdditionalLibraryDirectories>../../../ia32/lib;../../../ia32/lib-ext;../../../ia32/runtime/pincrt;../../../extras/xed-ia32/lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
@@ -249,9 +252,10 @@
       <DisableSpecificWarnings>4530;%(DisableSpecificWarnings)</DisableSpecificWarnings>
       <ForcedIncludeFiles>include\msvc_compat.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <ProgramDataBaseFileName>$(IntDir)vc$(PlatformToolsetVersion)64.pdb</ProgramDataBaseFileName>
     </ClCompile>
     <Link>
-      <AdditionalOptions>/export:main %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/export:main /PDBALTPATH:idadbg64.pdb %(AdditionalOptions)</AdditionalOptions>
       <AdditionalDependencies>../../../intel64/runtime/pincrt/crtbeginS.obj;pin.lib;xed.lib;pinvm.lib;stlport-static.lib;m-static.lib;c-static.lib;os-apis.lib;ntdll-64.lib;kernel32.lib</AdditionalDependencies>
       <AdditionalLibraryDirectories>../../../intel64/lib;../../../intel64/lib-ext;../../../intel64/runtime/pincrt;../../../extras/xed-intel64/lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
@@ -268,9 +272,11 @@
       <TargetMachine>MachineX64</TargetMachine>
       <AddModuleNamesToAssembly>%(AddModuleNamesToAssembly)</AddModuleNamesToAssembly>
       <ImageHasSafeExceptionHandlers>false</ImageHasSafeExceptionHandlers>
+      <OutputFile>$(OutDir)$(TargetName)64$(TargetExt)</OutputFile>
+      <ProgramDatabaseFile>$(OutDir)$(TargetName)64.pdb</ProgramDatabaseFile>
     </Link>
     <PostBuildEvent>
-      <Command>copy $(ProjectDir)$(Platform)\$(Configuration)\$(ProjectName).dll $(ProjectDir)\$(ProjectName)64.dll</Command>
+      <Command>copy $(ProjectDir)$(Platform)\$(Configuration)\$(ProjectName)64.dll $(ProjectDir)</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
