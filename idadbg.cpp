@@ -182,8 +182,8 @@ public:
   ~thread_data_t();
 
   bool is_started() const              { return started; }
-  void set_started()                   { started = true; ++active_threads_cnt; }
-  void set_finished() const            { --active_threads_cnt; }
+  inline void set_started();
+  inline void set_finished() const;
   bool ctx_ok() const                  { return ctx != NULL; }
   CONTEXT *get_ctx()                   { create_ctx(); return ctx; }
   bool is_phys_ctx() const             { return is_phys; }
@@ -211,11 +211,9 @@ public:
 
   inline bool add_thread_areas(pin_meminfo_vec_t *miv);
 
-  static int nthreads()                { return thread_cnt;   }
-  static int n_active_threads()        { return active_threads_cnt;   }
-  static int nsuspended()              { return suspeded_cnt; }
-  static bool have_suspended_threads() { return suspeded_cnt != 0; }
-  static bool all_threads_suspended()  { return thread_cnt != 0 && suspeded_cnt == thread_cnt; }
+  static inline int n_active_threads();
+  static inline bool have_suspended_threads();
+  static inline bool all_threads_suspended();
   void set_restart_ea(ADDRINT ea)      { restarted_at = ea; }
   inline void set_restart_ctx(const CONTEXT *context);
 
@@ -1994,6 +1992,11 @@ static bool read_mapping(FILE *mapfp, mapfp_entry_t *me)
 static void get_os_segments(pin_meminfo_vec_t &miv)
 {
   FILE *mapfp = fopen("/proc/self/maps", "rb");
+  if ( mapfp == NULL )
+  {
+    error_msg("ERROR: could not open /proc/self/maps");
+    return;
+  }
   mapfp_entry_t me;
   while ( read_mapping(mapfp, &me) )
   {
@@ -2022,6 +2025,7 @@ static void get_os_segments(pin_meminfo_vec_t &miv)
       add_segment(&miv, mi);
     }
   }
+  fclose(mapfp);
 }
 
 #else
@@ -2857,6 +2861,7 @@ PIN_LOCK thread_data_t::meminfo_lock;
 bool thread_data_t::meminfo_changed = false;
 
 //--------------------------------------------------------------------------
+// thr_data_lock should be acquired by the caller
 inline thread_data_t::thread_data_t()
   : ctx(NULL), restarted_at(BADADDR),
     ext_tid(NO_THREAD), state_bits(0),
@@ -2876,6 +2881,7 @@ inline thread_data_t::thread_data_t()
 }
 
 //--------------------------------------------------------------------------
+// thr_data_lock should be acquired by the caller
 inline thread_data_t::~thread_data_t()
 {
   delete ctx;
@@ -2892,6 +2898,7 @@ inline void thread_data_t::suspend()
 {
   sema_clear(&thr_sem);
   susp = true;
+  janitor_for_pinlock_t plj(&thr_data_lock);
   ++suspeded_cnt;
 }
 
@@ -2916,6 +2923,7 @@ inline void thread_data_t::wait()
 inline void thread_data_t::resume()
 {
   susp = false;
+  janitor_for_pinlock_t plj(&thr_data_lock);
   --suspeded_cnt;
   sema_set(&thr_sem);
 }
@@ -3415,6 +3423,56 @@ inline void thread_data_t::resume_after_suspend()
   is_stoppable = false;
   if ( susp )
     sema_clear(&thr_sem);
+}
+
+//--------------------------------------------------------------------------
+inline void thread_data_t::set_started()
+{
+  if ( started )
+  {
+    MSG("ERROR: set_started() called for already active thread %d\n", get_local_thread_id(ext_tid));
+    return;
+  }
+  started = true;
+  janitor_for_pinlock_t plj(&thr_data_lock);
+  ++active_threads_cnt;
+}
+
+//--------------------------------------------------------------------------
+inline void thread_data_t::set_finished() const
+{
+  if ( !started )
+  {
+    // if an application creates a huge amount of short-living threads
+    // a THREAD_FINI callback can be issued without corresponding preceding
+    // THREAD_START callback (a bug in PIN?)
+    // (happened for pc_linux_pin_threads64.elf)
+    MSG("THREAD FINI callback called for non-active thread %d (0x%x)\n", get_local_thread_id(ext_tid), ext_tid);
+    return;
+  }
+  janitor_for_pinlock_t plj(&thr_data_lock);
+  --active_threads_cnt;
+}
+
+//--------------------------------------------------------------------------
+inline int thread_data_t::n_active_threads()
+{
+  janitor_for_pinlock_t plj(&thr_data_lock);
+  return active_threads_cnt;
+}
+
+//--------------------------------------------------------------------------
+inline bool thread_data_t::have_suspended_threads()
+{
+  janitor_for_pinlock_t plj(&thr_data_lock);
+  return suspeded_cnt != 0;
+}
+
+//--------------------------------------------------------------------------
+inline bool thread_data_t::all_threads_suspended()
+{
+  janitor_for_pinlock_t plj(&thr_data_lock);
+  return thread_cnt != 0 && suspeded_cnt == thread_cnt;
 }
 
 //--------------------------------------------------------------------------
