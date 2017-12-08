@@ -1380,10 +1380,10 @@ static bool init_socket(void)
 
   if ( pin_listen(srv_socket, 1) == 0 )
   {
-    MSG("Listening at port %d, protocol version is %d, PIN version %d.%d.%d\n",
+    MSG("Listening at port %d, protocol version is %d, PIN version %d.%d.%s\n",
          (int)portno, PIN_PROTOCOL_VERSION,
          PIN_PRODUCT_VERSION_MAJOR, PIN_PRODUCT_VERSION_MINOR,
-         PIN_BUILD_NUMBER);
+         STRINGIZE(PIN_BUILD_NUMBER));
 
     int to = knob_connect_timeout;
 

@@ -6,6 +6,9 @@
 #ifndef _IDADBG_H
 #define _IDADBG_H
 
+#define _STRINGIZE(arg) #arg
+#define STRINGIZE(arg) _STRINGIZE(arg)
+
 #include <vector>
 #include <string.h>
 
