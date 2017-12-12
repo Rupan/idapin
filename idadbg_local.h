@@ -145,7 +145,7 @@ typedef WINDOWS::SOCKET SOCKET;
   {                                                         \
     if ( debug_level > 0 )                                  \
     {                                                       \
-      char _buf[1024];                                      \
+      char _buf[MAXSTR*2];                                  \
       pin_snprintf(_buf, sizeof(_buf), fmt, ##__VA_ARGS__); \
       fprintf(stderr, "%s", _buf);                          \
       LOG(_buf);                                            \
@@ -217,6 +217,7 @@ typedef WINDOWS::SOCKET SOCKET;
 #define sema_clear(sem)        SEMAFORE_CLEAR(sem)
 #define sema_set(sem)          SEMAFORE_SET(sem)
 #define wait_after_callback()  WAIT_AFTER_CALLBACK()
+//-V:DEBUG:547
 
 //--------------------------------------------------------------------------
 // tracebuf entry

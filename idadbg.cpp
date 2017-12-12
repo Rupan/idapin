@@ -19,6 +19,11 @@
 #include <time.h>
 
 //--------------------------------------------------------------------------
+#if defined(__GNUC__) && __GNUC__ >= 7
+#pragma GCC diagnostic warning "-Waligned-new=all"
+#endif
+
+//--------------------------------------------------------------------------
 // PIN build 71313 can not load WinSock library
 #if defined(_WIN32) && PIN_BUILD_NUMBER == 71313
 # error "IDA does not support PIN build #71313. Please use #65163 instead"
@@ -1233,7 +1238,7 @@ static bool accept_conn()
   }
   if ( req_v1.code != PTT_HELLO )
   {
-    if ( req_v1.code > PTT_END )
+    if ( req_v1.code >= PTT_END )
       MSG("Unknown packet type %d\n", req_v1.code);
     else
       MSG("'HELLO' expected, '%s' received)\n", packet_names[req_v1.code]);
@@ -1253,9 +1258,9 @@ static bool accept_conn()
   }
   // valid client: read the rest of 'hello' packed
   idapin_packet_t req;
-  memcpy(&req, &req_v1, sizeof(idapin_packet_v1_t));
+  memcpy(&req, &req_v1, sizeof(idapin_packet_v1_t));    //-V512 underflow of the buffer '& req'
   int rest = sizeof(idapin_packet_t) - sizeof(idapin_packet_v1_t);
-  if ( rest > 0 )
+  if ( rest > 0 )   //-V547 'rest > 0' is always true
   {
     char *ptr = (char *)&req + sizeof(idapin_packet_v1_t);
     if ( pin_recv(cli_socket, ptr, rest, "accept_conn") != rest )
@@ -1963,7 +1968,9 @@ static bool read_mapping(FILE *mapfp, mapfp_entry_t *me)
   me->ea1 = BADADDR;
 
   uint32 len = 0;
-  int code = sscanf(line, HEX_FMT "-" HEX_FMT " %s " HEX_FMT " %s " HEX64T_FMT "x%n",
+  me->perm[7] = '\0';
+  me->device[7] = '\0';
+  int code = sscanf(line, HEX_FMT "-" HEX_FMT " %7s " HEX_FMT " %7s " HEX64T_FMT "x%n",
                      &me->ea1,
                      &me->ea2,
                      me->perm,
@@ -2233,7 +2240,7 @@ static bool handle_read_regs(THREADID tid, int cls)
   if ( bufsize != 0 )
   {
     char *buf = get_io_buff(bufsize);
-    memset(buf, 0, bufsize);
+    memset(buf, 0, bufsize);    //-V575 null pointer
     regbuf.setbuf(buf);
     for ( int i = 0; i < regbuf.nclasses(); ++i )
     {
@@ -2441,7 +2448,7 @@ static bool handle_packet(const idapin_packet_t *res)
   ans.size = 0;
   ans.code = PTT_ERROR;
 
-  if ( res->code > PTT_END )
+  if ( res->code >= PTT_END )
   {
     MSG("Unknown packet type %d\n", res->code);
     return false;

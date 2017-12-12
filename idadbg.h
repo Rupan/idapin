@@ -191,9 +191,9 @@ struct pin_debug_event_t
     : eid(evid), pid(pin_pid_t(0)), tid(NO_THREAD), ea(addr) {}
                           // The following fields must be filled for all events:
   uint32    eid;          // Event code (used to decipher 'info' union)
-  pin_pid_t pid;          // Process where the event occured
-  pin_thid tid;           // Thread where the event occured
-  uint64 ea;              // Address where the event occured
+  pin_pid_t pid;          // Process where the event occurred
+  pin_thid tid;           // Thread where the event occurred
+  uint64 ea;              // Address where the event occurred
   union
   {
     bool handled;         // not used for the moment
@@ -623,7 +623,7 @@ inline bool pin_classregs_t::init(pin_register_class_t cls, bool is_32bit)
   {
     case PIN_RC_GENERAL:
       firstnum = PINREG_FIRST_GPREG;
-      lastnum = is_32bit ? PINREG_LAST_REG32 : PINREG_LAST_GPREG;
+      lastnum = is_32bit ? PINREG_LAST_REG32 : PINREG_LAST_GPREG;   //-V547 'is_32bit' is always true
       break;
     case PIN_RC_SEGMENTS:
       firstnum = PINREG_FIRST_SEGREG;
@@ -635,7 +635,7 @@ inline bool pin_classregs_t::init(pin_register_class_t cls, bool is_32bit)
       break;
     case PIN_RC_XMM:
       firstnum = PINREG_FIRST_XMMREG;
-      lastnum = is_32bit ? PINREG_XMM7 : PINREG_LAST_XMMREG;
+      lastnum = is_32bit ? PINREG_XMM7 : PINREG_LAST_XMMREG;    //-V547 'is_32bit' is always true
       break;
     default:
       return false;   // bad class
