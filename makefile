@@ -48,14 +48,14 @@ ifneq ($(wildcard ../Config/makefile.config),)
   CONFIG_ROOT =../Config
   MAKECONF = $(CONFIG_ROOT)/makefile.config
 else
-  CONFIG_ROOT = ../../../../third_party/pin/src/$(OS_NAME)/source/tools/Config
+  CONFIG_ROOT = ../../../third_party/pin/src/$(OS_NAME)/source/tools/Config
   MAKECONF = makefile.config
 endif
 
 include $(MAKECONF)
 
-ifneq ($(wildcard ../../../allmake.mak),)
-  include ../../../allmake.mak
+ifneq ($(wildcard ../../allmake.mak),)
+  include ../../allmake.mak
 endif
 
 ##############################################################
@@ -68,8 +68,8 @@ endif
 TEST_TOOL_ROOTS := idadbg
 ###
 
-ifneq ($(wildcard ../../../objdir.mak),)
-  include ../../../objdir.mak
+ifneq ($(wildcard ../../objdir.mak),)
+  include ../../objdir.mak
   OUTDIR=objdir
 endif
 
@@ -100,14 +100,14 @@ else
   LINT_TARGET = /DTARGET_IA32E /DHOST_IA32E
 endif
 LINT_FLAGS = /D__PIN__=1 /D__i386__ /DTARGET_WINDOWS $(LINT_TARGET) \
-						 /D_WINDOWS_H_PATH_ \
+             /D_WINDOWS_H_PATH_ \
              /I$(PIN_ROOT)/extras/crt \
              /I$(PIN_ROOT)/extras/crt/include \
              /I$(PIN_ROOT)/extras/crt/include/arch-x86 \
-						 /I$(PIN_ROOT)/extras/crt/include/kernel/uapi \
-						 /I$(PIN_ROOT)/extras/crt/include/kernel/uapi/asm-x86 \
+             /I$(PIN_ROOT)/extras/crt/include/kernel/uapi \
+             /I$(PIN_ROOT)/extras/crt/include/kernel/uapi/asm-x86 \
              /I$(PIN_ROOT)/extras/xed-ia32/include/xed \
-						 /FIinclude/msvc_compat.h \
+             /FIinclude/msvc_compat.h \
              $(COMPONENT_INCLUDES)  /I$(MSSDK)/include \
              /I$(PIN_ROOT)/source/include/pin \
              /I$(PIN_ROOT)/source/include/pin/gen \

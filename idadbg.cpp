@@ -19,6 +19,11 @@
 #include <time.h>
 
 //--------------------------------------------------------------------------
+#if defined(__GNUC__) && __GNUC__ >= 7
+#pragma GCC diagnostic warning "-Waligned-new=all"
+#endif
+
+//--------------------------------------------------------------------------
 // PIN build 71313 can not load WinSock library
 #if defined(_WIN32) && PIN_BUILD_NUMBER == 71313
 # error "IDA does not support PIN build #71313. Please use #65163 instead"
@@ -120,7 +125,7 @@ inline REG regidx_pintool2pin(pin_regid_t pintool_reg);
 enum process_state_t
 {
   APP_STATE_NONE,          // not started yet -> don't report any event
-                           // until the PROCESS_START packet is added
+                           // until the PROCESS_STARTED packet is added
                            // to the events queue
   APP_STATE_RUNNING,       // process thread is running
   APP_STATE_PAUSE,         // pause request received
@@ -155,12 +160,12 @@ static bool break_at_next_inst = false;
 // semaphore used for pausing the whole application
 static PIN_SEMAPHORE run_app_sem;
 
-// main thread id: we don't emit THREAD_START event for it
-// as IDA registers main thread when handles PROCESS_START event
+// main thread id: we don't emit THREAD_STARTED event for it
+// as IDA registers main thread when handles PROCESS_STARTED event
 static THREADID main_thread = INVALID_THREADID;
 static bool main_thread_started = false;
 
-// PROCESS_START event prepared by app_start_cb
+// PROCESS_STARTED event prepared by app_start_cb
 static pin_local_event_t start_ev;
 
 //--------------------------------------------------------------------------
@@ -763,11 +768,11 @@ inline void enqueue_event(pin_local_event_t &ev)
 {
   ev.debev.pid = PIN_GetPid();
   ev.debev.handled = false;
-  // put PROCESS_START event into the front of the queue to be sent to IDA
-  // before any LIBRARY_LOAD event because IDA needs
-  // existing main thread context when suspends execution on LIBRARY_LOAD
+  // put PROCESS_STARTED event into the front of the queue to be sent to IDA
+  // before any LIB_LOADED event because IDA needs
+  // existing main thread context when suspends execution on LIB_LOADED
   // (in case 'Suspend on library load/unload' option is enabled)
-  events.add_ev(ev, ev.debev.eid == PROCESS_START);
+  events.add_ev(ev, ev.debev.eid == PROCESS_STARTED);
 }
 
 //--------------------------------------------------------------------------
@@ -794,7 +799,7 @@ inline bool pop_debug_event(pin_local_event_t *out_ev, bool *can_resume)
       DEBUG(2, "pop event->correct tid(%d)/ea(%p)\n", out_ev->debev.tid, pvoid(out_ev->debev.ea));
     }
   }
-  if ( thread_data_t::is_meminfo_changed() || out_ev->debev.eid == THREAD_START )
+  if ( thread_data_t::is_meminfo_changed() || out_ev->debev.eid == THREAD_STARTED )
     out_ev->debev.flags |= PIN_DEBEV_REFRESH_MEMINFO;
   return true;
 }
@@ -861,9 +866,9 @@ inline bool wait_for_thread_termination(PIN_THREAD_UID tuid)
 static VOID fini_cb(INT32 code, VOID *)
 {
 #ifndef _WIN32
-  // generate and send PROCESS_EXIT event
+  // generate and send PROCESS_EXITED event
   // (on Windows it was sent earlier by prepare_fini_cb)
-  pin_local_event_t evt(PROCESS_EXIT, thread_data_t::get_thread_id());
+  pin_local_event_t evt(PROCESS_EXITED, thread_data_t::get_thread_id());
   evt.debev.exit_code = code;
   enqueue_event(evt);
   PIN_SetExiting();         // terminate listener
@@ -897,7 +902,7 @@ static VOID prepare_fini_cb(VOID *)
 {
   THREADID thr = thread_data_t::get_thread_id();
   DEBUG(2, "PREPARE_FINI (thread = %d/main=%d)\n", thr, main_thread);
-  // THREAD_EXIT, PROCESS_EXIT events should be sent after all other ones -
+  // THREAD_EXITED, PROCESS_EXITED events should be sent after all other ones -
   // move them from suspender to the listener queue
   suspender.copy_pending_events();
   suspender.finish();
@@ -912,16 +917,16 @@ static VOID prepare_fini_cb(VOID *)
   PIN_SetExiting();
   for ( int i = 0; i <= RCV_TIMEOUT && listener_uid != INVALID_PIN_THREAD_UID; ++i )
     PIN_Sleep(1);
-  // generate artifical THREAD_EXIT and PROCESS_EXIT events
+  // generate artifical THREAD_EXITED and PROCESS_EXITED events
   int fake_code = 0;
-  pin_local_event_t exit_thr_ev(THREAD_EXIT, thr);
+  pin_local_event_t exit_thr_ev(THREAD_EXITED, thr);
   exit_thr_ev.debev.exit_code = fake_code;
   enqueue_event(exit_thr_ev);
-  pin_local_event_t exit_ev(PROCESS_EXIT, thr);
+  pin_local_event_t exit_ev(PROCESS_EXITED, thr);
   exit_ev.debev.exit_code = fake_code;
   enqueue_event(exit_ev);
   // add the last empty event for read_handle_packet to be able to send ACK for
-  // the last event (PROCESS_EXIT), otherwise we can hang on Win10
+  // the last event (PROCESS_EXITED), otherwise we can hang on Win10
   pin_local_event_t last_empty_ev(NO_EVENT, INVALID_THREADID);
   enqueue_event(last_empty_ev);
 
@@ -977,7 +982,7 @@ static VOID image_load_cb(IMG img, VOID *)
   }
   MSG("Loading library %s %p:%p, %d symbols\n", IMG_Name(img).c_str(), pvoid(start_ea), pvoid(end_ea), nsyms);
 
-  pin_local_event_t event(LIBRARY_LOAD,
+  pin_local_event_t event(LIB_LOADED,
                           thread_data_t::get_thread_id(), IMG_Entry(img));
   pin_debug_event_t &ev = event.debev;
   pin_strncpy(ev.modinfo.name, IMG_Name(img).c_str(), sizeof(ev.modinfo.name));
@@ -997,7 +1002,7 @@ static VOID image_load_cb(IMG img, VOID *)
 //lint -e{1746} parameter 'img' could be made const reference
 static VOID image_unload_cb(IMG img, VOID *)
 {
-  pin_local_event_t ev(LIBRARY_UNLOAD);
+  pin_local_event_t ev(LIB_UNLOADED);
   pin_strncpy(ev.debev.info, IMG_Name(img).c_str(), sizeof(ev.debev.info));
   enqueue_event(ev);
 
@@ -1022,10 +1027,10 @@ static void emit_process_start_ev()
   suspend_at_event(start_ev, true);
   start_ev.debev.eid = NO_EVENT;  // reset event after adding to the queue
   // Handle packets in the main thread until we receive the RESUME request
-  // to PROCESS_START event
+  // to PROCESS_STARTED event
   // We need this to add breakpoints before the application's code is
   // executed, otherwise, we will run into race conditions
-  if ( !handle_packets(-1, PROCESS_START) )
+  if ( !handle_packets(-1, PROCESS_STARTED) )
   {
     MSG("Error handling initial requests, exiting...\n");
     exit_process(-1);
@@ -1045,21 +1050,21 @@ static VOID thread_start_cb(THREADID tid, CONTEXT *ctx, INT32, VOID *)
 
   if ( tid != main_thread )
   {
-    // don't emit THREAD_START here because we don't have correct thread stack
+    // don't emit THREAD_STARTED here because we don't have correct thread stack
     // segments here. They should be available in ctrl_rtn (unfortunately not
-    // always too) - so that's better place to emit THREAD_START event
+    // always too) - so that's better place to emit THREAD_STARTED event
     breakpoints.prepare_suspend();
   }
   else
   {
-    // do not emit THREAD_START if we are inside main thread:
-    // IDA has stored main thread when processed PROCESS_START event
+    // do not emit THREAD_STARTED if we are inside main thread:
+    // IDA has stored main thread when processed PROCESS_STARTED event
     main_thread_started = true;
     thread_data_t *tdata = thread_data_t::get_thread_data(tid);
     tdata->save_ctx(ctx);
     if ( start_ev.debev.eid != NO_EVENT )
     {
-      DEBUG(2, "thread_start: Emit PROCESS_START prepared by app_start_cb\n");
+      DEBUG(2, "thread_start: Emit PROCESS_STARTED prepared by app_start_cb\n");
       emit_process_start_ev();
     }
   }
@@ -1074,7 +1079,7 @@ static VOID thread_fini_cb(THREADID tid, const CONTEXT *ctx, INT32 code, VOID *)
   tdata->save_ctx(ctx);
   thread_data_t::set_meminfo_changed(true);
 
-  pin_local_event_t ev(THREAD_EXIT, tid, get_ctx_ip(ctx));
+  pin_local_event_t ev(THREAD_EXITED, tid, get_ctx_ip(ctx));
   ev.debev.exit_code = code;
   tdata->set_finished();
   DEBUG(2, "THREAD FINISH: %d AT %p\n", tid, pvoid(ev.debev.ea));
@@ -1233,7 +1238,7 @@ static bool accept_conn()
   }
   if ( req_v1.code != PTT_HELLO )
   {
-    if ( req_v1.code > PTT_END )
+    if ( req_v1.code >= PTT_END )
       MSG("Unknown packet type %d\n", req_v1.code);
     else
       MSG("'HELLO' expected, '%s' received)\n", packet_names[req_v1.code]);
@@ -1253,9 +1258,9 @@ static bool accept_conn()
   }
   // valid client: read the rest of 'hello' packed
   idapin_packet_t req;
-  memcpy(&req, &req_v1, sizeof(idapin_packet_v1_t));
+  memcpy(&req, &req_v1, sizeof(idapin_packet_v1_t));    //-V512 underflow of the buffer '& req'
   int rest = sizeof(idapin_packet_t) - sizeof(idapin_packet_v1_t);
-  if ( rest > 0 )
+  if ( rest > 0 )   //-V547 'rest > 0' is always true
   {
     char *ptr = (char *)&req + sizeof(idapin_packet_v1_t);
     if ( pin_recv(cli_socket, ptr, rest, "accept_conn") != rest )
@@ -1462,7 +1467,7 @@ static VOID app_start_cb(VOID *)
     instrumenter_t::process_image(img, true);
   }
 
-  start_ev.debev.eid = PROCESS_START;
+  start_ev.debev.eid = PROCESS_STARTED;
   start_ev.debev.ea = IMG_Entry(img);
   pin_strncpy(start_ev.debev.modinfo.name, IMG_Name(img).c_str(), sizeof(start_ev.debev.modinfo.name));
   start_ev.debev.modinfo.base = start_ea;
@@ -1470,10 +1475,10 @@ static VOID app_start_cb(VOID *)
   start_ev.debev.modinfo.size = (uint32)(end_ea - start_ea);
 
   if ( main_thread_started )
-  { // emit PROCESS_START event only if main thread already started to be sure
+  { // emit PROCESS_STARTED event only if main thread already started to be sure
     // we have valid register values. If the thread was not started yet -
     // do nothing (will generate the event in thread_start_cb)
-    DEBUG(2, "Emit PROCESS_START by app_start_cb\n");
+    DEBUG(2, "Emit PROCESS_STARTED by app_start_cb\n");
     emit_process_start_ev();
   }
 }
@@ -1963,7 +1968,9 @@ static bool read_mapping(FILE *mapfp, mapfp_entry_t *me)
   me->ea1 = BADADDR;
 
   uint32 len = 0;
-  int code = sscanf(line, HEX_FMT "-" HEX_FMT " %s " HEX_FMT " %s " HEX64T_FMT "x%n",
+  me->perm[7] = '\0';
+  me->device[7] = '\0';
+  int code = sscanf(line, HEX_FMT "-" HEX_FMT " %7s " HEX_FMT " %7s " HEX64T_FMT "x%n",
                      &me->ea1,
                      &me->ea2,
                      me->perm,
@@ -2233,7 +2240,7 @@ static bool handle_read_regs(THREADID tid, int cls)
   if ( bufsize != 0 )
   {
     char *buf = get_io_buff(bufsize);
-    memset(buf, 0, bufsize);
+    memset(buf, 0, bufsize);    //-V575 null pointer
     regbuf.setbuf(buf);
     for ( int i = 0; i < regbuf.nclasses(); ++i )
     {
@@ -2386,9 +2393,9 @@ static bool do_resume(idapin_packet_t *ans, const idapin_packet_t &request)
         MSG("RESUME error: can't find thread data for %d\n", tid_local);
     }
 
-    if ( eid == THREAD_EXIT )
+    if ( eid == THREAD_EXITED )
     {
-      // we had to keep thread context until THREAD_EXIT event is processed
+      // we had to keep thread context until THREAD_EXITED event is processed
       // by the client. Now we can release it
       thread_data_t::release_thread_data(tid_local);
     }
@@ -2416,10 +2423,10 @@ static bool do_resume(idapin_packet_t *ans, const idapin_packet_t &request)
       else
       {
         DEBUG(2, "Event queue is empty, but actual resume is not allowed - "
-                 "probably because of pending PROCESS_ATTACH\n");
+                 "probably because of pending PROCESS_ATTACHED\n");
       }
     }
-    if ( eid == PROCESS_EXIT )
+    if ( eid == PROCESS_EXITED )
       process_state = APP_STATE_EXITED;
   }
   instrumenter_t::resume();
@@ -2441,7 +2448,7 @@ static bool handle_packet(const idapin_packet_t *res)
   ans.size = 0;
   ans.code = PTT_ERROR;
 
-  if ( res->code > PTT_END )
+  if ( res->code >= PTT_END )
   {
     MSG("Unknown packet type %d\n", res->code);
     return false;
@@ -2769,7 +2776,7 @@ static bool listen_to_ida(void)
   // this request leads to installing PIN callbacks and calling
   // PIN_StartProgram() which never returns.
   // The next portion of packets (variable number, until resume to
-  // PROCESS_START event) will be handled in the application start
+  // PROCESS_STARTED event) will be handled in the application start
   // callback. Then we serve packets synchronously by callback/analysis
   // routines until the separate internal thread (listener) becomes active.
   // Finally, the rest of packets will be served by the listened thread.
@@ -3445,7 +3452,7 @@ inline void thread_data_t::set_finished() const
   {
     // if an application creates a huge amount of short-living threads
     // a THREAD_FINI callback can be issued without corresponding preceding
-    // THREAD_START callback (a bug in PIN?)
+    // THREAD_STARTED callback (a bug in PIN?)
     // (happened for pc_linux_pin_threads64.elf)
     MSG("THREAD FINI callback called for non-active thread %d (0x%x)\n", get_local_thread_id(ext_tid), ext_tid);
     return;
@@ -3509,10 +3516,10 @@ inline void ev_queue_t::push_front(const pin_local_event_t &ev)
 }
 
 //--------------------------------------------------------------------------
-// IDA expects PROCESS_ATTACH event to be sent after all THREAD_START events.
-// A THREAD_START event can be emited only by thread_start_cb() which
-// in turn may be called after PROCESS_ATTACH event. So we don't
-// send PROCESS_ATTACH until all threads are reported or timeout (1sec) expired
+// IDA expects PROCESS_ATTACHED event to be sent after all THREAD_STARTED events.
+// A THREAD_STARTED event can be emited only by thread_start_cb() which
+// in turn may be called after PROCESS_ATTACHED event. So we don't
+// send PROCESS_ATTACHED until all threads are reported or timeout (1sec) expired
 inline uint32 get_initial_thread_count()
 {
   static time_t started = 0;    //-V795 year 2038
@@ -3541,28 +3548,28 @@ inline bool ev_queue_t::pop_front(pin_local_event_t *out_ev, bool *can_resume)
   janitor_for_pinlock_t ql_guard(&lock);
   if ( !queue.empty() )
   {
-    // number of sent THREAD_START events (initially == 1 because main thread
-    // doesn't need to be notified with THREAD_START)
+    // number of sent THREAD_STARTED events (initially == 1 because main thread
+    // doesn't need to be notified with THREAD_STARTED)
     static uint32 n_started_threads = 1;
     *out_ev = queue.front();
-    if ( out_ev->debev.eid == PROCESS_ATTACH )
-    { // Send ATTACH only if all THREAD_START events have already been sent
+    if ( out_ev->debev.eid == PROCESS_ATTACHED )
+    { // Send ATTACH only if all THREAD_STARTED events have already been sent
       if ( n_started_threads < get_initial_thread_count() )
-      { // not all THREAD_START events sent
+      { // not all THREAD_STARTED events sent
         if ( queue.size() == 1 )
         {
           if ( can_resume )
             *can_resume = false;
           return false;
         }
-        // move PROCESS_ATTACH event to the end of the queue
+        // move PROCESS_ATTACHED event to the end of the queue
         // and take one from the front
         queue.pop_front();
         queue.push_back(*out_ev);
         *out_ev = queue.front();
       }
     }
-    if ( out_ev->debev.eid == THREAD_START )
+    if ( out_ev->debev.eid == THREAD_STARTED )
       ++n_started_threads;
     last_retrieved_ev = *out_ev;
     queue.pop_front();
@@ -3889,7 +3896,8 @@ void PIN_FAST_ANALYSIS_CALL bpt_mgr_t::ctrl_rtn(ADDRINT addr, const CONTEXT *ctx
 //--------------------------------------------------------------------------
 inline void emit_thread_start_ev(THREADID tid, thread_data_t *tdata)
 {
-  pin_local_event_t ev(THREAD_START, tid, get_ctx_ip(tdata->get_ctx()));
+  pin_local_event_t ev(THREAD_STARTED, tid, get_ctx_ip(tdata->get_ctx()));
+  ev.debev.info[0] = '\0';  // thread name
   DEBUG(2, "THREAD START: %d AT %p\n", tid, pvoid(ev.debev.ea));
   tdata->set_started();
   do_suspend(ev);
@@ -4017,10 +4025,10 @@ void bpt_mgr_t::emit_event(ev_id_t eid, ADDRINT addr, THREADID tid)
   };
   static const bpt_ev_t bpt_evs[] =
   {
-    { "Paused",        PROCESS_SUSPEND },
+    { "Paused",        PROCESS_SUSPENDED },
     { "Single step",   STEP },
     { "Breakpoint",    BREAKPOINT },
-    { "Initial break", PROCESS_ATTACH }
+    { "Initial break", PROCESS_ATTACHED }
   };
   if ( eid != EV_NO_EVENT && !process_detached() && !process_exiting() )
   {
@@ -4035,7 +4043,7 @@ void bpt_mgr_t::emit_event(ev_id_t eid, ADDRINT addr, THREADID tid)
     pin_local_event_t ev(bpt_evs[eid].id, tid, addr);
     ev.debev.bpt.hea = BADADDR;
     ev.debev.bpt.kea = BADADDR;
-    if ( ev.debev.eid == PROCESS_ATTACH )
+    if ( ev.debev.eid == PROCESS_ATTACHED )
       ev.debev.modinfo = start_ev.debev.modinfo;
     do_suspend(ev);
   }
@@ -4969,7 +4977,7 @@ inline void suspender_t::stop_threads(const pin_local_event_t &ev)
 //--------------------------------------------------------------------------
 inline void suspender_t::pause_threads()
 {
-  pin_local_event_t ev(PROCESS_SUSPEND);
+  pin_local_event_t ev(PROCESS_SUSPENDED);
   suspend_threads(PAUSING, ev);
   // wake up the suspender thread here: otherwise the program can be sleeping
   // somewhere inside a syscall and the control will not reach in the near
@@ -5224,10 +5232,10 @@ void suspender_t::copy_pending_events_nolock(THREADID curr_tid)
       ADDRINT ea = get_ctx_ip(td->get_ctx());
       if ( ADDRINT(ev.debev.ea) == ADDRINT(BADADDR) )
       {
-        if ( ev.debev.eid != PROCESS_SUSPEND )
+        if ( ev.debev.eid != PROCESS_SUSPENDED )
         {
-          if ( ev.debev.eid != LIBRARY_UNLOAD
-            && ev.debev.eid != THREAD_EXIT )
+          if ( ev.debev.eid != LIB_UNLOADED
+            && ev.debev.eid != THREAD_EXITED )
           {
             if ( curr_tid == INVALID_THREADID )
             {
@@ -5243,9 +5251,9 @@ void suspender_t::copy_pending_events_nolock(THREADID curr_tid)
       else
       {
         if ( ev.debev.ea != ea
-          && ev.debev.eid != LIBRARY_LOAD
-          && ev.debev.eid != LIBRARY_UNLOAD
-          && ev.debev.eid != THREAD_EXIT )
+          && ev.debev.eid != LIB_LOADED
+          && ev.debev.eid != LIB_UNLOADED
+          && ev.debev.eid != THREAD_EXITED )
         {
           if ( curr_tid == INVALID_THREADID )
           {
@@ -5259,7 +5267,7 @@ void suspender_t::copy_pending_events_nolock(THREADID curr_tid)
     }
     else
     {
-      if ( ev.debev.eid != THREAD_EXIT )
+      if ( ev.debev.eid != THREAD_EXITED )
       {
         if ( curr_tid == INVALID_THREADID )
         {

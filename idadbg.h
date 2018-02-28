@@ -22,7 +22,9 @@ typedef unsigned char uchar;
 // 5 - Support FPU/XMM registers, PTT_GET_SEGBASE packet   2..5
 // 6 - Event notification, PTT_WRITE_MEMORY packet         2..6
 // 7 - PTT_READ_SYMBOLS packet                             2..7
-#define PIN_PROTOCOL_VERSION 7
+// 8 - renumbered PROCESS_ATTACHED, PROCESS_DETACHED,      2..8
+//     PROCESS_SUSPENDED, TRACE_FULL
+#define PIN_PROTOCOL_VERSION 8
 
 #ifdef IDA_SDK_VERSION
 // IDA specific declarations
@@ -85,37 +87,35 @@ typedef          long long int64;
 // the replica of event_id_t declared in idd.hpp
 enum pin_event_id_t
 {
-  NO_EVENT       = 0x00000000, // Not an interesting event. This event can be
-                               // used if the debugger module needs to return
-                               // an event but there are no valid events.
-  PROCESS_START  = 0x00000001, // New process has been started.
-  PROCESS_EXIT   = 0x00000002, // Process has been stopped.
-  THREAD_START   = 0x00000004, // New thread has been started.
-  THREAD_EXIT    = 0x00000008, // Thread has been stopped.
-  BREAKPOINT     = 0x00000010, // Breakpoint has been reached. IDA will complain
-                               // about unknown breakpoints, they should be reported
-                               // as exceptions.
-  STEP           = 0x00000020, // One instruction has been executed. Spurious
-                               // events of this kind are silently ignored by IDA.
-  EXCEPTION      = 0x00000040, // Exception.
-  LIBRARY_LOAD   = 0x00000080, // New library has been loaded.
-  LIBRARY_UNLOAD = 0x00000100, // Library has been unloaded.
-  INFORMATION    = 0x00000200, // User-defined information.
-                               // This event can be used to return empty information
-                               // This will cause IDA to call get_debug_event()
-                               // immediately once more.
-  _SYSCALL       = 0x00000400, // Syscall (not used yet).
-  WINMESSAGE     = 0x00000800, // Window message (not used yet).
-  PROCESS_ATTACH = 0x00001000, // Successfully attached to running process.
-  PROCESS_DETACH = 0x00002000, // Successfully detached from process.
-  PROCESS_SUSPEND= 0x00004000, // Process has been suspended..
-                               // This event can be used by the debugger module
-                               // to signal if the process spontaneously gets
-                               // suspended (not because of an exception,
-                               // breakpoint, or single step). IDA will silently
-                               // switch to the 'suspended process' mode without
-                               // displaying any messages.
-  TRACE_FULL     = 0x00008000, // The trace being recorded is full.
+  NO_EVENT         = 0x00000000, // Not an interesting event. This event can be
+                                 // used if the debugger module needs to return
+                                 // an event but there are no valid events.
+  PROCESS_STARTED  = 0x00000001, // New process has been started.
+  PROCESS_EXITED   = 0x00000002, // Process has been stopped.
+  THREAD_STARTED   = 0x00000004, // New thread has been started.
+  THREAD_EXITED    = 0x00000008, // Thread has been stopped.
+  BREAKPOINT       = 0x00000010, // Breakpoint has been reached. IDA will complain
+                                 // about unknown breakpoints, they should be reported
+                                 // as exceptions.
+  STEP             = 0x00000020, // One instruction has been executed. Spurious
+                                 // events of this kind are silently ignored by IDA.
+  EXCEPTION        = 0x00000040, // Exception.
+  LIB_LOADED       = 0x00000080, // New library has been loaded.
+  LIB_UNLOADED     = 0x00000100, // Library has been unloaded.
+  INFORMATION      = 0x00000200, // User-defined information.
+                                 // This event can be used to return empty information
+                                 // This will cause IDA to call get_debug_event()
+                                 // immediately once more.
+  PROCESS_ATTACHED = 0x00000400, // Successfully attached to running process.
+  PROCESS_DETACHED = 0x00000800, // Successfully detached from process.
+  PROCESS_SUSPENDED= 0x00001000, // Process has been suspended..
+                                 // This event can be used by the debugger module
+                                 // to signal if the process spontaneously gets
+                                 // suspended (not because of an exception,
+                                 // breakpoint, or single step). IDA will silently
+                                 // switch to the 'suspended process' mode without
+                                 // displaying any messages.
+  TRACE_FULL       = 0x00002000, // The trace being recorded is full.
 };
 
 // Trace event types:
@@ -188,9 +188,9 @@ struct pin_debug_event_t
     : eid(evid), pid(pin_pid_t(0)), tid(NO_THREAD), ea(addr) {}
                           // The following fields must be filled for all events:
   uint32    eid;          // Event code (used to decipher 'info' union)
-  pin_pid_t pid;          // Process where the event occured
-  pin_thid tid;           // Thread where the event occured
-  uint64 ea;              // Address where the event occured
+  pin_pid_t pid;          // Process where the event occurred
+  pin_thid tid;           // Thread where the event occurred
+  uint64 ea;              // Address where the event occurred
   union
   {
     bool handled;         // not used for the moment
@@ -199,9 +199,10 @@ struct pin_debug_event_t
   };
   union
   {
-    pin_module_info_t modinfo; // PROCESS_START, PROCESS_ATTACH, LIBRARY_LOAD
-    int exit_code;             // PROCESS_EXIT, THREAD_EXIT
-    char info[MAXSTR];         // LIBRARY_UNLOAD (unloaded library name)
+    pin_module_info_t modinfo; // PROCESS_STARTED, PROCESS_ATTACHED, LIB_LOADED
+    int exit_code;             // PROCESS_EXITED, THREAD_EXITED
+    char info[MAXSTR];         // THREAD_STARTED (thread name)
+                               // LIB_UNLOADED (unloaded library name)
                                // INFORMATION (will be displayed in the
                                //              messages window if not empty)
     pin_e_breakpoint_t bpt;    // BREAKPOINT
@@ -620,7 +621,7 @@ inline bool pin_classregs_t::init(pin_register_class_t cls, bool is_32bit)
   {
     case PIN_RC_GENERAL:
       firstnum = PINREG_FIRST_GPREG;
-      lastnum = is_32bit ? PINREG_LAST_REG32 : PINREG_LAST_GPREG;
+      lastnum = is_32bit ? PINREG_LAST_REG32 : PINREG_LAST_GPREG;   //-V547 'is_32bit' is always true
       break;
     case PIN_RC_SEGMENTS:
       firstnum = PINREG_FIRST_SEGREG;
@@ -632,7 +633,7 @@ inline bool pin_classregs_t::init(pin_register_class_t cls, bool is_32bit)
       break;
     case PIN_RC_XMM:
       firstnum = PINREG_FIRST_XMMREG;
-      lastnum = is_32bit ? PINREG_XMM7 : PINREG_LAST_XMMREG;
+      lastnum = is_32bit ? PINREG_XMM7 : PINREG_LAST_XMMREG;    //-V547 'is_32bit' is always true
       break;
     default:
       return false;   // bad class
