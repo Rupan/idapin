@@ -54,14 +54,14 @@ namespace WINDOWS
 #ifdef _WIN32
 
 # if _MSC_VER
-#   if PIN_BUILD_NUMBER < 76991 || defined(__LINT__)
+#   if defined(PIN_NUMERIC_BUILD) && PIN_NUMERIC_BUILD < 76991 || defined(__LINT__)
 #     define snprintf _snprintf
 #     define bzero(b,len) (memset((b), '\0', (len)), (void) 0)
 #     define bcopy(b1,b2,len) (memmove((b2), (b1), (len)), (void) 0)
 #   endif
 # endif
 
-# if defined(_WIN64) && PIN_BUILD_NUMBER < 76991
+# if defined(_WIN64) && defined(PIN_NUMERIC_BUILD) && PIN_NUMERIC_BUILD < 76991
   typedef signed __int64 ssize_t;
 # else
   typedef signed int ssize_t;

@@ -4,15 +4,15 @@
 
 */
 
-#ifdef __LINT__
-// manualy include PIN-specific types in case of LINT
-#include "crt/include/types.h"
+#if defined(__NT__) && defined(__LINT__)
+//lint -e40 -e1055 -e64 -e92
 #endif
-
-//lint +linebuf
-//lint -e1075  Ambiguous reference to symbol
 #include <pin.H>
-//lint +e1075
+
+//--------------------------------------------------------------------------
+#if PIN_PRODUCT_VERSION_MAJOR < 3 || PIN_PRODUCT_VERSION_MAJOR == 3 && PIN_PRODUCT_VERSION_MINOR < 7
+#define PIN_NUMERIC_BUILD PIN_BUILD_NUMBER
+#endif
 
 #include "idadbg.h"
 #include "idadbg_local.h"
@@ -25,11 +25,11 @@
 
 //--------------------------------------------------------------------------
 // PIN build 71313 can not load WinSock library
-#if defined(_WIN32) && PIN_BUILD_NUMBER == 71313
-# error "IDA does not support PIN build #71313. Please use #65163 instead"
+#if defined(_WIN32) && defined(PIN_NUMERIC_BUILD) && PIN_NUMERIC_BUILD == 71313
+# error "IDA does not support PIN build #71313. Please use a newer one instead"
 #endif
 
-#if PIN_BUILD_NUMBER >= 76991
+#if !defined(PIN_NUMERIC_BUILD) || PIN_NUMERIC_BUILD >= 76991
 #ifndef _WIN32
 #include <sys/syscall.h>
 #endif
@@ -64,6 +64,7 @@
 
 //--------------------------------------------------------------------------
 // Command line switches
+//lint -esym(843, knob_ida_port, knob_connect_timeout, knob_debug_mode) could be made const
 KNOB<int> knob_ida_port(
         KNOB_MODE_WRITEONCE,
         "pintool",
@@ -108,6 +109,7 @@ static PIN_LOCK listener_ready_lock;
 static bool handle_packets(int total, pin_event_id_t until_ev = NO_EVENT);
 static bool read_handle_packet(idapin_packet_t *res = NULL);
 static bool handle_packet(const idapin_packet_t *res);
+//lint -esym(551, last_packet) not accessed
 static const char *last_packet = "NONE";      // for debug purposes
 // We use this function to communicate with IDA synchronously
 // while the listener thread is not active
@@ -190,7 +192,7 @@ public:
   inline void set_started();
   inline void set_finished() const;
   bool ctx_ok() const                  { return ctx != NULL; }
-  CONTEXT *get_ctx()                   { create_ctx(); return ctx; }
+  CONTEXT *get_ctx()                   { create_ctx(); return ctx; }  //lint !e1535 !e1536 exposes lower access member
   bool is_phys_ctx() const             { return is_phys; }
   bool is_ctx_changed() const          { return ctx_changed; }
   bool is_ctx_valid() const            { return ctx_valid; }
@@ -618,8 +620,8 @@ public:
 // thread start/finish callback incremented 'thr_age' also issued suspend request
 // which should cause one more suspender iteration.
 // (the bug was revealed by pc_linux_pin_threads64.elf)
-static int thr_age = 0;    //lint -e843
-inline void inc_thr_age(const char *from)
+static int thr_age = 0;    //lint !e843 could be made const
+inline void inc_thr_age(const char *from)   //lint !e715 'from' not subsequently referenced
 {
   DEBUG(2, "%s: inc_thr_age -> %d\n", from, thr_age+1);
 #ifndef _WIN32
@@ -685,7 +687,7 @@ inline bool process_suspended()
 }
 
 //--------------------------------------------------------------------------
-inline char *tail(char *in_str) { return strchr(in_str, '\0'); }
+inline char *tail(char *in_str) { return strchr(in_str, '\0'); }  //lint !e818 parameter could be pointer to const
 inline const char *tail(const char *in_str) { return strchr(in_str, '\0'); }
 
 //--------------------------------------------------------------------------
@@ -895,7 +897,7 @@ static VOID fini_cb(INT32 code, VOID *)
     DEBUG(2, "FINI: Everything OK\n");
 }
 
-#if PIN_BUILD_NUMBER >= 76991
+#if !defined(PIN_NUMERIC_BUILD) || PIN_NUMERIC_BUILD >= 76991
 //--------------------------------------------------------------------------
 // This function is called when the application exits
 static VOID prepare_fini_cb(VOID *)
@@ -969,7 +971,7 @@ static VOID image_load_cb(IMG img, VOID *)
     imgbase.resize(pos);
   imgbase += '_';
 #endif
-  int nsyms = 0;
+  int nsyms = 0;    //lint !e550 not subsequently accessed
   for ( SYM sym = IMG_RegsymHead(img); SYM_Valid(sym); sym = SYM_Next(sym) )
   {
 #ifdef _WIN32
@@ -1098,7 +1100,7 @@ static void detach_process()
 }
 
 //--------------------------------------------------------------------------
-inline void error_msg(const char *msg)
+inline void error_msg(const char *msg)    //lint !e715 'msg' not subsequently referenced
 {
   MSG("%s: %s\n", msg, strerror(errno));
 }
@@ -1122,7 +1124,7 @@ static int (WSAAPI *p__WSAFDIsSet)(WINDOWS::SOCKET fd, fd_set *);
 #endif
 
 //--------------------------------------------------------------------------
-static void check_network_error(int fd, ssize_t ret, const char *from_where)
+static void check_network_error(int fd, ssize_t ret, const char *from_where)  //lint !e715 'from_where' not subsequently referenced
 {
   if ( ret == -1 )
   {
@@ -1294,7 +1296,7 @@ static int optval;
 static bool set_sockopt(PIN_SOCKET sock, int level, int optname, int val)
 {
   optval = val;
-#if defined(_WIN32) || PIN_BUILD_NUMBER < 76991
+#if defined(_WIN32) || defined(PIN_NUMERIC_BUILD) && PIN_NUMERIC_BUILD < 76991
   return pin_setsockopt(sock, level, optname, &optval, sizeof(optval)) == 0;
 #else
   // setsockopt is not implemented in PinCRT, fortunately syscall() is, use it
@@ -1307,6 +1309,8 @@ static bool set_sockopt(PIN_SOCKET sock, int level, int optname, int val)
 #endif
 }
 
+#define XSTR_BUILDNUM(build) STR_BUILDNUM(build)
+#define STR_BUILDNUM(build) #build
 //--------------------------------------------------------------------------
 static bool init_socket(void)
 {
@@ -1385,10 +1389,10 @@ static bool init_socket(void)
 
   if ( pin_listen(srv_socket, 1) == 0 )
   {
-    MSG("Listening at port %d, protocol version is %d, PIN version %d.%d.%d\n",
+    MSG("Listening at port %d, protocol version is %d, "
+        "PIN version %d.%d (build " XSTR_BUILDNUM(PIN_BUILD_NUMBER) ")\n",
          (int)portno, PIN_PROTOCOL_VERSION,
-         PIN_PRODUCT_VERSION_MAJOR, PIN_PRODUCT_VERSION_MINOR,
-         PIN_BUILD_NUMBER);
+         PIN_PRODUCT_VERSION_MAJOR, PIN_PRODUCT_VERSION_MINOR);
 
     int to = knob_connect_timeout;
 
@@ -1739,7 +1743,7 @@ static void handle_start_process(void)
   PIN_AddThreadFiniFunction(thread_fini_cb, 0);
 
   // Register fini_cb to be called when the application exits
-#if PIN_BUILD_NUMBER >= 76991
+#if !defined(PIN_NUMERIC_BUILD) || PIN_NUMERIC_BUILD >= 76991
   PIN_AddFiniFunction(fini_cb, 0);
   PIN_AddPrepareForFiniFunction(prepare_fini_cb, 0);
 #else
@@ -1772,7 +1776,7 @@ static void handle_start_process(void)
 }
 
 //--------------------------------------------------------------------------
-static void add_segment(pin_meminfo_vec_t *miv, pin_memory_info_t &mi)
+static void add_segment(pin_meminfo_vec_t *miv, const pin_memory_info_t &mi)
 {
   pin_meminfo_vec_t::reverse_iterator p;
   for ( p = miv->rbegin(); p != miv->rend(); ++p )
@@ -1977,7 +1981,7 @@ static bool read_mapping(FILE *mapfp, mapfp_entry_t *me)
                      &me->offset,
                      me->device,
                      &me->inode,
-                     &len);
+                     &len);   //lint !e706 format '%n' specifies type 'int *' whose pointee type is nominally inconsistent
   if ( code == 6 && len < sizeof(line) )
   {
     char *ptr = &line[len];
@@ -2162,7 +2166,7 @@ inline const char *hexval(const void *ptr, int size)
     snprintf(buf, sizeof(buf), "%p", pvoid(ea));
   }
   else
-  {
+  { //lint --e{529} local variable '' not subsequently referenced
     int pos = 0;
     const unsigned char *s = (const unsigned char *)ptr;
     for ( int i = 0; i < size; ++i, pos += 3 )
@@ -3021,7 +3025,8 @@ inline void thread_data_t::add_all_thread_areas(pin_meminfo_vec_t *miv)
 }
 
 //--------------------------------------------------------------------------
-bool thread_data_t::add_thread_areas(pin_meminfo_vec_t *miv)
+//lint -esym(1762,thread_data_t::add_thread_areas) could be made const
+inline bool thread_data_t::add_thread_areas(pin_meminfo_vec_t *miv)   //lint !e818 parameter could be pointer to const
 {
 #ifdef _WIN32
   janitor_for_pinlock_t plj(&ctx_lock);
@@ -3052,6 +3057,8 @@ bool thread_data_t::add_thread_areas(pin_meminfo_vec_t *miv)
     snprintf(gr_mi.name, sizeof(gr_mi.name), "Stack PAGE GUARD[%08X]", ext_tid);
     add_segment(miv, gr_mi);
   }
+#else
+  qnotused(miv);
 #endif
   return true;
 }
@@ -3701,7 +3708,7 @@ bpt_mgr_t::~bpt_mgr_t()
 }
 
 //--------------------------------------------------------------------------
-void bpt_mgr_t::cleanup()
+inline void bpt_mgr_t::cleanup()
 {
   bpts.clear();
   pending_bpts.clear();
@@ -3770,7 +3777,7 @@ inline void bpt_mgr_t::set_step(THREADID stepping_tid)
 }
 
 //--------------------------------------------------------------------------
-bool bpt_mgr_t::prepare_resume()
+inline bool bpt_mgr_t::prepare_resume()
 {
   janitor_for_pinlock_t plj(&bpt_lock);
   update_ctrl_flag();
@@ -3798,7 +3805,7 @@ inline void bpt_mgr_t::update_ctrl_flag() const
 
 //--------------------------------------------------------------------------
 // prepare suspend (don't acquire process_state_lock, it must be done by caller)
-void bpt_mgr_t::prepare_suspend()
+inline void bpt_mgr_t::prepare_suspend()
 {
   if ( process_detached() || process_exiting() )
   {
@@ -3818,7 +3825,7 @@ void bpt_mgr_t::prepare_suspend()
 // the second priority has bpt_rtn (CALL_ORDER_FIRST + 1) and all tracing
 // routines have the lowest priority (CALL_ORDER_LAST)
 //lint -e{1746} parameter 'ins' could be made const reference
-void bpt_mgr_t::add_rtns(INS ins, ADDRINT ins_addr)
+inline void bpt_mgr_t::add_rtns(INS ins, ADDRINT ins_addr)
 {
   DEBUG(3, "bpt_mgr_t::add_rtns (%p) -> %d\n", pvoid(ins_addr), int(control_enabled));
   // add the real instruction instrumentation
@@ -4037,6 +4044,7 @@ void bpt_mgr_t::emit_event(ev_id_t eid, ADDRINT addr, THREADID tid)
       break_at_next_inst = false;
       stepping_thread = INVALID_THREADID;
     }
+    //lint --e{529} local variable '' not subsequently referenced
     pin_thid ext_tid = thread_data_t::get_ext_thread_id(tid);
     MSG("%s at %p (thread %d/%d)\n", bpt_evs[eid].name, pvoid(addr), int(ext_tid), int(tid));
 
@@ -4140,7 +4148,7 @@ void instrumenter_t::init_instrumentations()
     MSG("NOTICE: No tracing method selected, nothing will be recorded until some tracing method is selected.\n");
   }
 
-  bool control_cb_enabled = breakpoints.need_control_cb();
+  bool control_cb_enabled = breakpoints.need_control_cb();    //lint !e529 not subsequently referenced
   MSG("Init tracing "
       "%croutine%s, %cbblk, %cinstruction%s, %cregs, %cflow\n",
       tracing_routine       ? '+' : '-',
@@ -4413,7 +4421,7 @@ ADDRINT instrumenter_t::rtn_enabled(VOID *)
 // (used for both instruction and bbl tracing modes)
 VOID PIN_FAST_ANALYSIS_CALL instrumenter_t::ins_logic_cb(
         const CONTEXT *ctx,
-        VOID *ip,
+        VOID *ip,   //lint !e818 could be pointer to const
         pin_tev_type_t tev_type)
 {
   if ( check_address((ADDRINT)ip, tev_type) )

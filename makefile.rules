@@ -1,0 +1,36 @@
+##############################################################
+#
+# This file includes all the test targets as well as all the
+# non-default build rules and test recipes.
+#
+##############################################################
+
+# IDA-specific configuration to generate proper DLL name.
+ifeq ($(TARGET),intel64)
+  BITNESS := 64
+endif
+
+
+##############################################################
+#
+# Test targets
+#
+##############################################################
+
+###### Place all generic definitions here ######
+
+# This defines tests which run tools of the same name.  This is simply for convenience to avoid
+# defining the test name twice (once in TOOL_ROOTS and again in TEST_ROOTS).
+# Tests defined here should not be defined in TOOL_ROOTS and TEST_ROOTS.
+TEST_TOOL_ROOTS := idadbg$(BITNESS)
+
+##############################################################
+#
+# Build rules
+#
+##############################################################
+
+# special rule for IDA's 64-bit DLLs (with non-suffixed object file name).
+# (copied form makefile.default.rules).
+$(OBJDIR)idadbg$(BITNESS)$(PINTOOL_SUFFIX): $(OBJDIR)idadbg$(OBJ_SUFFIX)
+	$(LINKER) $(TOOL_LDFLAGS) $(LINK_EXE)$@ $< $(TOOL_LPATHS) $(TOOL_LIBS)
