@@ -4,15 +4,15 @@
 
 */
 
-#ifdef __LINT__
-// manualy include PIN-specific types in case of LINT
-#include "crt/include/types.h"
+#if defined(__NT__) && defined(__LINT__)
+//lint -e40 -e1055 -e64 -e92
 #endif
-
-//lint +linebuf
-//lint -e1075  Ambiguous reference to symbol
 #include <pin.H>
-//lint +e1075
+
+//--------------------------------------------------------------------------
+#if PIN_PRODUCT_VERSION_MAJOR < 3 || PIN_PRODUCT_VERSION_MAJOR == 3 && PIN_PRODUCT_VERSION_MINOR < 7
+#define PIN_NUMERIC_BUILD PIN_BUILD_NUMBER
+#endif
 
 #include "idadbg.h"
 #include "idadbg_local.h"
@@ -25,11 +25,11 @@
 
 //--------------------------------------------------------------------------
 // PIN build 71313 can not load WinSock library
-#if defined(_WIN32) && PIN_BUILD_NUMBER == 71313
-# error "IDA does not support PIN build #71313. Please use #65163 instead"
+#if defined(_WIN32) && defined(PIN_NUMERIC_BUILD) && PIN_NUMERIC_BUILD == 71313
+# error "IDA does not support PIN build #71313. Please use a newer one instead"
 #endif
 
-#if PIN_BUILD_NUMBER >= 76991
+#if !defined(PIN_NUMERIC_BUILD) || PIN_NUMERIC_BUILD >= 76991
 #ifndef _WIN32
 #include <sys/syscall.h>
 #endif
@@ -64,6 +64,7 @@
 
 //--------------------------------------------------------------------------
 // Command line switches
+//lint -esym(843, knob_ida_port, knob_connect_timeout, knob_debug_mode) could be made const
 KNOB<int> knob_ida_port(
         KNOB_MODE_WRITEONCE,
         "pintool",
@@ -108,6 +109,7 @@ static PIN_LOCK listener_ready_lock;
 static bool handle_packets(int total, pin_event_id_t until_ev = NO_EVENT);
 static bool read_handle_packet(idapin_packet_t *res = NULL);
 static bool handle_packet(const idapin_packet_t *res);
+//lint -esym(551, last_packet) not accessed
 static const char *last_packet = "NONE";      // for debug purposes
 // We use this function to communicate with IDA synchronously
 // while the listener thread is not active
@@ -125,7 +127,7 @@ inline REG regidx_pintool2pin(pin_regid_t pintool_reg);
 enum process_state_t
 {
   APP_STATE_NONE,          // not started yet -> don't report any event
-                           // until the PROCESS_START packet is added
+                           // until the PROCESS_STARTED packet is added
                            // to the events queue
   APP_STATE_RUNNING,       // process thread is running
   APP_STATE_PAUSE,         // pause request received
@@ -160,12 +162,12 @@ static bool break_at_next_inst = false;
 // semaphore used for pausing the whole application
 static PIN_SEMAPHORE run_app_sem;
 
-// main thread id: we don't emit THREAD_START event for it
-// as IDA registers main thread when handles PROCESS_START event
+// main thread id: we don't emit THREAD_STARTED event for it
+// as IDA registers main thread when handles PROCESS_STARTED event
 static THREADID main_thread = INVALID_THREADID;
 static bool main_thread_started = false;
 
-// PROCESS_START event prepared by app_start_cb
+// PROCESS_STARTED event prepared by app_start_cb
 static pin_local_event_t start_ev;
 
 //--------------------------------------------------------------------------
@@ -190,7 +192,7 @@ public:
   inline void set_started();
   inline void set_finished() const;
   bool ctx_ok() const                  { return ctx != NULL; }
-  CONTEXT *get_ctx()                   { create_ctx(); return ctx; }
+  CONTEXT *get_ctx()                   { create_ctx(); return ctx; }  //lint !e1535 !e1536 exposes lower access member
   bool is_phys_ctx() const             { return is_phys; }
   bool is_ctx_changed() const          { return ctx_changed; }
   bool is_ctx_valid() const            { return ctx_valid; }
@@ -618,8 +620,8 @@ public:
 // thread start/finish callback incremented 'thr_age' also issued suspend request
 // which should cause one more suspender iteration.
 // (the bug was revealed by pc_linux_pin_threads64.elf)
-static int thr_age = 0;    //lint -e843
-inline void inc_thr_age(const char *from)
+static int thr_age = 0;    //lint !e843 could be made const
+inline void inc_thr_age(const char *from)   //lint !e715 'from' not subsequently referenced
 {
   DEBUG(2, "%s: inc_thr_age -> %d\n", from, thr_age+1);
 #ifndef _WIN32
@@ -685,7 +687,7 @@ inline bool process_suspended()
 }
 
 //--------------------------------------------------------------------------
-inline char *tail(char *in_str) { return strchr(in_str, '\0'); }
+inline char *tail(char *in_str) { return strchr(in_str, '\0'); }  //lint !e818 parameter could be pointer to const
 inline const char *tail(const char *in_str) { return strchr(in_str, '\0'); }
 
 //--------------------------------------------------------------------------
@@ -768,11 +770,11 @@ inline void enqueue_event(pin_local_event_t &ev)
 {
   ev.debev.pid = PIN_GetPid();
   ev.debev.handled = false;
-  // put PROCESS_START event into the front of the queue to be sent to IDA
-  // before any LIBRARY_LOAD event because IDA needs
-  // existing main thread context when suspends execution on LIBRARY_LOAD
+  // put PROCESS_STARTED event into the front of the queue to be sent to IDA
+  // before any LIB_LOADED event because IDA needs
+  // existing main thread context when suspends execution on LIB_LOADED
   // (in case 'Suspend on library load/unload' option is enabled)
-  events.add_ev(ev, ev.debev.eid == PROCESS_START);
+  events.add_ev(ev, ev.debev.eid == PROCESS_STARTED);
 }
 
 //--------------------------------------------------------------------------
@@ -799,7 +801,7 @@ inline bool pop_debug_event(pin_local_event_t *out_ev, bool *can_resume)
       DEBUG(2, "pop event->correct tid(%d)/ea(%p)\n", out_ev->debev.tid, pvoid(out_ev->debev.ea));
     }
   }
-  if ( thread_data_t::is_meminfo_changed() || out_ev->debev.eid == THREAD_START )
+  if ( thread_data_t::is_meminfo_changed() || out_ev->debev.eid == THREAD_STARTED )
     out_ev->debev.flags |= PIN_DEBEV_REFRESH_MEMINFO;
   return true;
 }
@@ -866,9 +868,9 @@ inline bool wait_for_thread_termination(PIN_THREAD_UID tuid)
 static VOID fini_cb(INT32 code, VOID *)
 {
 #ifndef _WIN32
-  // generate and send PROCESS_EXIT event
+  // generate and send PROCESS_EXITED event
   // (on Windows it was sent earlier by prepare_fini_cb)
-  pin_local_event_t evt(PROCESS_EXIT, thread_data_t::get_thread_id());
+  pin_local_event_t evt(PROCESS_EXITED, thread_data_t::get_thread_id());
   evt.debev.exit_code = code;
   enqueue_event(evt);
   PIN_SetExiting();         // terminate listener
@@ -895,14 +897,14 @@ static VOID fini_cb(INT32 code, VOID *)
     DEBUG(2, "FINI: Everything OK\n");
 }
 
-#if PIN_BUILD_NUMBER >= 76991
+#if !defined(PIN_NUMERIC_BUILD) || PIN_NUMERIC_BUILD >= 76991
 //--------------------------------------------------------------------------
 // This function is called when the application exits
 static VOID prepare_fini_cb(VOID *)
 {
   THREADID thr = thread_data_t::get_thread_id();
   DEBUG(2, "PREPARE_FINI (thread = %d/main=%d)\n", thr, main_thread);
-  // THREAD_EXIT, PROCESS_EXIT events should be sent after all other ones -
+  // THREAD_EXITED, PROCESS_EXITED events should be sent after all other ones -
   // move them from suspender to the listener queue
   suspender.copy_pending_events();
   suspender.finish();
@@ -917,16 +919,16 @@ static VOID prepare_fini_cb(VOID *)
   PIN_SetExiting();
   for ( int i = 0; i <= RCV_TIMEOUT && listener_uid != INVALID_PIN_THREAD_UID; ++i )
     PIN_Sleep(1);
-  // generate artifical THREAD_EXIT and PROCESS_EXIT events
+  // generate artifical THREAD_EXITED and PROCESS_EXITED events
   int fake_code = 0;
-  pin_local_event_t exit_thr_ev(THREAD_EXIT, thr);
+  pin_local_event_t exit_thr_ev(THREAD_EXITED, thr);
   exit_thr_ev.debev.exit_code = fake_code;
   enqueue_event(exit_thr_ev);
-  pin_local_event_t exit_ev(PROCESS_EXIT, thr);
+  pin_local_event_t exit_ev(PROCESS_EXITED, thr);
   exit_ev.debev.exit_code = fake_code;
   enqueue_event(exit_ev);
   // add the last empty event for read_handle_packet to be able to send ACK for
-  // the last event (PROCESS_EXIT), otherwise we can hang on Win10
+  // the last event (PROCESS_EXITED), otherwise we can hang on Win10
   pin_local_event_t last_empty_ev(NO_EVENT, INVALID_THREADID);
   enqueue_event(last_empty_ev);
 
@@ -969,7 +971,7 @@ static VOID image_load_cb(IMG img, VOID *)
     imgbase.resize(pos);
   imgbase += '_';
 #endif
-  int nsyms = 0;
+  int nsyms = 0;    //lint !e550 not subsequently accessed
   for ( SYM sym = IMG_RegsymHead(img); SYM_Valid(sym); sym = SYM_Next(sym) )
   {
 #ifdef _WIN32
@@ -982,7 +984,7 @@ static VOID image_load_cb(IMG img, VOID *)
   }
   MSG("Loading library %s %p:%p, %d symbols\n", IMG_Name(img).c_str(), pvoid(start_ea), pvoid(end_ea), nsyms);
 
-  pin_local_event_t event(LIBRARY_LOAD,
+  pin_local_event_t event(LIB_LOADED,
                           thread_data_t::get_thread_id(), IMG_Entry(img));
   pin_debug_event_t &ev = event.debev;
   pin_strncpy(ev.modinfo.name, IMG_Name(img).c_str(), sizeof(ev.modinfo.name));
@@ -1002,7 +1004,7 @@ static VOID image_load_cb(IMG img, VOID *)
 //lint -e{1746} parameter 'img' could be made const reference
 static VOID image_unload_cb(IMG img, VOID *)
 {
-  pin_local_event_t ev(LIBRARY_UNLOAD);
+  pin_local_event_t ev(LIB_UNLOADED);
   pin_strncpy(ev.debev.info, IMG_Name(img).c_str(), sizeof(ev.debev.info));
   enqueue_event(ev);
 
@@ -1027,10 +1029,10 @@ static void emit_process_start_ev()
   suspend_at_event(start_ev, true);
   start_ev.debev.eid = NO_EVENT;  // reset event after adding to the queue
   // Handle packets in the main thread until we receive the RESUME request
-  // to PROCESS_START event
+  // to PROCESS_STARTED event
   // We need this to add breakpoints before the application's code is
   // executed, otherwise, we will run into race conditions
-  if ( !handle_packets(-1, PROCESS_START) )
+  if ( !handle_packets(-1, PROCESS_STARTED) )
   {
     MSG("Error handling initial requests, exiting...\n");
     exit_process(-1);
@@ -1050,21 +1052,21 @@ static VOID thread_start_cb(THREADID tid, CONTEXT *ctx, INT32, VOID *)
 
   if ( tid != main_thread )
   {
-    // don't emit THREAD_START here because we don't have correct thread stack
+    // don't emit THREAD_STARTED here because we don't have correct thread stack
     // segments here. They should be available in ctrl_rtn (unfortunately not
-    // always too) - so that's better place to emit THREAD_START event
+    // always too) - so that's better place to emit THREAD_STARTED event
     breakpoints.prepare_suspend();
   }
   else
   {
-    // do not emit THREAD_START if we are inside main thread:
-    // IDA has stored main thread when processed PROCESS_START event
+    // do not emit THREAD_STARTED if we are inside main thread:
+    // IDA has stored main thread when processed PROCESS_STARTED event
     main_thread_started = true;
     thread_data_t *tdata = thread_data_t::get_thread_data(tid);
     tdata->save_ctx(ctx);
     if ( start_ev.debev.eid != NO_EVENT )
     {
-      DEBUG(2, "thread_start: Emit PROCESS_START prepared by app_start_cb\n");
+      DEBUG(2, "thread_start: Emit PROCESS_STARTED prepared by app_start_cb\n");
       emit_process_start_ev();
     }
   }
@@ -1079,7 +1081,7 @@ static VOID thread_fini_cb(THREADID tid, const CONTEXT *ctx, INT32 code, VOID *)
   tdata->save_ctx(ctx);
   thread_data_t::set_meminfo_changed(true);
 
-  pin_local_event_t ev(THREAD_EXIT, tid, get_ctx_ip(ctx));
+  pin_local_event_t ev(THREAD_EXITED, tid, get_ctx_ip(ctx));
   ev.debev.exit_code = code;
   tdata->set_finished();
   DEBUG(2, "THREAD FINISH: %d AT %p\n", tid, pvoid(ev.debev.ea));
@@ -1098,7 +1100,7 @@ static void detach_process()
 }
 
 //--------------------------------------------------------------------------
-inline void error_msg(const char *msg)
+inline void error_msg(const char *msg)    //lint !e715 'msg' not subsequently referenced
 {
   MSG("%s: %s\n", msg, strerror(errno));
 }
@@ -1107,7 +1109,7 @@ inline void error_msg(const char *msg)
 static int (WSAAPI *p_WSAStartup)(WINDOWS::WORD, WINDOWS::WSADATA *);
 static int (WSAAPI *p_WSAGetLastError)(void);
 static WINDOWS::SOCKET (WSAAPI *p_socket)(int af, int type, int protocol);
-static int (WSAAPI *p_bind)(WINDOWS::SOCKET, const struct WINDOWS::sockaddr *, int );
+static int (WSAAPI *p_bind)(WINDOWS::SOCKET, const struct WINDOWS::sockaddr *, int);
 static int (WSAAPI *p_setsockopt)(WINDOWS::SOCKET, int, int, const char *optval, int optlen);
 static int (WSAAPI *p_listen)(WINDOWS::SOCKET s, int backlog);
 static WINDOWS::SOCKET (WSAAPI *p_accept)(WINDOWS::SOCKET, struct WINDOWS::sockaddr *, int *);
@@ -1122,7 +1124,7 @@ static int (WSAAPI *p__WSAFDIsSet)(WINDOWS::SOCKET fd, fd_set *);
 #endif
 
 //--------------------------------------------------------------------------
-static void check_network_error(int fd, ssize_t ret, const char *from_where)
+static void check_network_error(int fd, ssize_t ret, const char *from_where)  //lint !e715 'from_where' not subsequently referenced
 {
   if ( ret == -1 )
   {
@@ -1294,7 +1296,7 @@ static int optval;
 static bool set_sockopt(PIN_SOCKET sock, int level, int optname, int val)
 {
   optval = val;
-#if defined(_WIN32) || PIN_BUILD_NUMBER < 76991
+#if defined(_WIN32) || defined(PIN_NUMERIC_BUILD) && PIN_NUMERIC_BUILD < 76991
   return pin_setsockopt(sock, level, optname, &optval, sizeof(optval)) == 0;
 #else
   // setsockopt is not implemented in PinCRT, fortunately syscall() is, use it
@@ -1307,6 +1309,8 @@ static bool set_sockopt(PIN_SOCKET sock, int level, int optname, int val)
 #endif
 }
 
+#define XSTR_BUILDNUM(build) STR_BUILDNUM(build)
+#define STR_BUILDNUM(build) #build
 //--------------------------------------------------------------------------
 static bool init_socket(void)
 {
@@ -1385,10 +1389,10 @@ static bool init_socket(void)
 
   if ( pin_listen(srv_socket, 1) == 0 )
   {
-    MSG("Listening at port %d, protocol version is %d, PIN version %d.%d.%s\n",
+    MSG("Listening at port %d, protocol version is %d, "
+        "PIN version %d.%d (build " XSTR_BUILDNUM(PIN_BUILD_NUMBER) ")\n",
          (int)portno, PIN_PROTOCOL_VERSION,
-         PIN_PRODUCT_VERSION_MAJOR, PIN_PRODUCT_VERSION_MINOR,
-         STRINGIZE(PIN_BUILD_NUMBER));
+         PIN_PRODUCT_VERSION_MAJOR, PIN_PRODUCT_VERSION_MINOR);
 
     int to = knob_connect_timeout;
 
@@ -1467,7 +1471,7 @@ static VOID app_start_cb(VOID *)
     instrumenter_t::process_image(img, true);
   }
 
-  start_ev.debev.eid = PROCESS_START;
+  start_ev.debev.eid = PROCESS_STARTED;
   start_ev.debev.ea = IMG_Entry(img);
   pin_strncpy(start_ev.debev.modinfo.name, IMG_Name(img).c_str(), sizeof(start_ev.debev.modinfo.name));
   start_ev.debev.modinfo.base = start_ea;
@@ -1475,10 +1479,10 @@ static VOID app_start_cb(VOID *)
   start_ev.debev.modinfo.size = (uint32)(end_ea - start_ea);
 
   if ( main_thread_started )
-  { // emit PROCESS_START event only if main thread already started to be sure
+  { // emit PROCESS_STARTED event only if main thread already started to be sure
     // we have valid register values. If the thread was not started yet -
     // do nothing (will generate the event in thread_start_cb)
-    DEBUG(2, "Emit PROCESS_START by app_start_cb\n");
+    DEBUG(2, "Emit PROCESS_STARTED by app_start_cb\n");
     emit_process_start_ev();
   }
 }
@@ -1739,7 +1743,7 @@ static void handle_start_process(void)
   PIN_AddThreadFiniFunction(thread_fini_cb, 0);
 
   // Register fini_cb to be called when the application exits
-#if PIN_BUILD_NUMBER >= 76991
+#if !defined(PIN_NUMERIC_BUILD) || PIN_NUMERIC_BUILD >= 76991
   PIN_AddFiniFunction(fini_cb, 0);
   PIN_AddPrepareForFiniFunction(prepare_fini_cb, 0);
 #else
@@ -1772,7 +1776,7 @@ static void handle_start_process(void)
 }
 
 //--------------------------------------------------------------------------
-static void add_segment(pin_meminfo_vec_t *miv, pin_memory_info_t &mi)
+static void add_segment(pin_meminfo_vec_t *miv, const pin_memory_info_t &mi)
 {
   pin_meminfo_vec_t::reverse_iterator p;
   for ( p = miv->rbegin(); p != miv->rend(); ++p )
@@ -1977,7 +1981,7 @@ static bool read_mapping(FILE *mapfp, mapfp_entry_t *me)
                      &me->offset,
                      me->device,
                      &me->inode,
-                     &len);
+                     &len);   //lint !e706 format '%n' specifies type 'int *' whose pointee type is nominally inconsistent
   if ( code == 6 && len < sizeof(line) )
   {
     char *ptr = &line[len];
@@ -2162,7 +2166,7 @@ inline const char *hexval(const void *ptr, int size)
     snprintf(buf, sizeof(buf), "%p", pvoid(ea));
   }
   else
-  {
+  { //lint --e{529} local variable '' not subsequently referenced
     int pos = 0;
     const unsigned char *s = (const unsigned char *)ptr;
     for ( int i = 0; i < size; ++i, pos += 3 )
@@ -2393,9 +2397,9 @@ static bool do_resume(idapin_packet_t *ans, const idapin_packet_t &request)
         MSG("RESUME error: can't find thread data for %d\n", tid_local);
     }
 
-    if ( eid == THREAD_EXIT )
+    if ( eid == THREAD_EXITED )
     {
-      // we had to keep thread context until THREAD_EXIT event is processed
+      // we had to keep thread context until THREAD_EXITED event is processed
       // by the client. Now we can release it
       thread_data_t::release_thread_data(tid_local);
     }
@@ -2423,10 +2427,10 @@ static bool do_resume(idapin_packet_t *ans, const idapin_packet_t &request)
       else
       {
         DEBUG(2, "Event queue is empty, but actual resume is not allowed - "
-                 "probably because of pending PROCESS_ATTACH\n");
+                 "probably because of pending PROCESS_ATTACHED\n");
       }
     }
-    if ( eid == PROCESS_EXIT )
+    if ( eid == PROCESS_EXITED )
       process_state = APP_STATE_EXITED;
   }
   instrumenter_t::resume();
@@ -2704,7 +2708,7 @@ static bool read_handle_packet(idapin_packet_t *res)
     while ( !events.send_event(NULL) )
     {
       if ( listener_uid == PIN_ThreadUid() && PIN_IsProcessExiting() )
-         return false;
+        return false;
       if ( pin_sockwait(10) )
         break;
     }
@@ -2776,7 +2780,7 @@ static bool listen_to_ida(void)
   // this request leads to installing PIN callbacks and calling
   // PIN_StartProgram() which never returns.
   // The next portion of packets (variable number, until resume to
-  // PROCESS_START event) will be handled in the application start
+  // PROCESS_STARTED event) will be handled in the application start
   // callback. Then we serve packets synchronously by callback/analysis
   // routines until the separate internal thread (listener) becomes active.
   // Finally, the rest of packets will be served by the listened thread.
@@ -3021,7 +3025,8 @@ inline void thread_data_t::add_all_thread_areas(pin_meminfo_vec_t *miv)
 }
 
 //--------------------------------------------------------------------------
-bool thread_data_t::add_thread_areas(pin_meminfo_vec_t *miv)
+//lint -esym(1762,thread_data_t::add_thread_areas) could be made const
+inline bool thread_data_t::add_thread_areas(pin_meminfo_vec_t *miv)   //lint !e818 parameter could be pointer to const
 {
 #ifdef _WIN32
   janitor_for_pinlock_t plj(&ctx_lock);
@@ -3052,6 +3057,8 @@ bool thread_data_t::add_thread_areas(pin_meminfo_vec_t *miv)
     snprintf(gr_mi.name, sizeof(gr_mi.name), "Stack PAGE GUARD[%08X]", ext_tid);
     add_segment(miv, gr_mi);
   }
+#else
+  qnotused(miv);
 #endif
   return true;
 }
@@ -3452,7 +3459,7 @@ inline void thread_data_t::set_finished() const
   {
     // if an application creates a huge amount of short-living threads
     // a THREAD_FINI callback can be issued without corresponding preceding
-    // THREAD_START callback (a bug in PIN?)
+    // THREAD_STARTED callback (a bug in PIN?)
     // (happened for pc_linux_pin_threads64.elf)
     MSG("THREAD FINI callback called for non-active thread %d (0x%x)\n", get_local_thread_id(ext_tid), ext_tid);
     return;
@@ -3516,10 +3523,10 @@ inline void ev_queue_t::push_front(const pin_local_event_t &ev)
 }
 
 //--------------------------------------------------------------------------
-// IDA expects PROCESS_ATTACH event to be sent after all THREAD_START events.
-// A THREAD_START event can be emited only by thread_start_cb() which
-// in turn may be called after PROCESS_ATTACH event. So we don't
-// send PROCESS_ATTACH until all threads are reported or timeout (1sec) expired
+// IDA expects PROCESS_ATTACHED event to be sent after all THREAD_STARTED events.
+// A THREAD_STARTED event can be emited only by thread_start_cb() which
+// in turn may be called after PROCESS_ATTACHED event. So we don't
+// send PROCESS_ATTACHED until all threads are reported or timeout (1sec) expired
 inline uint32 get_initial_thread_count()
 {
   static time_t started = 0;    //-V795 year 2038
@@ -3548,28 +3555,28 @@ inline bool ev_queue_t::pop_front(pin_local_event_t *out_ev, bool *can_resume)
   janitor_for_pinlock_t ql_guard(&lock);
   if ( !queue.empty() )
   {
-    // number of sent THREAD_START events (initially == 1 because main thread
-    // doesn't need to be notified with THREAD_START)
+    // number of sent THREAD_STARTED events (initially == 1 because main thread
+    // doesn't need to be notified with THREAD_STARTED)
     static uint32 n_started_threads = 1;
     *out_ev = queue.front();
-    if ( out_ev->debev.eid == PROCESS_ATTACH )
-    { // Send ATTACH only if all THREAD_START events have already been sent
+    if ( out_ev->debev.eid == PROCESS_ATTACHED )
+    { // Send ATTACH only if all THREAD_STARTED events have already been sent
       if ( n_started_threads < get_initial_thread_count() )
-      { // not all THREAD_START events sent
+      { // not all THREAD_STARTED events sent
         if ( queue.size() == 1 )
         {
           if ( can_resume )
             *can_resume = false;
           return false;
         }
-        // move PROCESS_ATTACH event to the end of the queue
+        // move PROCESS_ATTACHED event to the end of the queue
         // and take one from the front
         queue.pop_front();
         queue.push_back(*out_ev);
         *out_ev = queue.front();
       }
     }
-    if ( out_ev->debev.eid == THREAD_START )
+    if ( out_ev->debev.eid == THREAD_STARTED )
       ++n_started_threads;
     last_retrieved_ev = *out_ev;
     queue.pop_front();
@@ -3701,7 +3708,7 @@ bpt_mgr_t::~bpt_mgr_t()
 }
 
 //--------------------------------------------------------------------------
-void bpt_mgr_t::cleanup()
+inline void bpt_mgr_t::cleanup()
 {
   bpts.clear();
   pending_bpts.clear();
@@ -3770,7 +3777,7 @@ inline void bpt_mgr_t::set_step(THREADID stepping_tid)
 }
 
 //--------------------------------------------------------------------------
-bool bpt_mgr_t::prepare_resume()
+inline bool bpt_mgr_t::prepare_resume()
 {
   janitor_for_pinlock_t plj(&bpt_lock);
   update_ctrl_flag();
@@ -3798,7 +3805,7 @@ inline void bpt_mgr_t::update_ctrl_flag() const
 
 //--------------------------------------------------------------------------
 // prepare suspend (don't acquire process_state_lock, it must be done by caller)
-void bpt_mgr_t::prepare_suspend()
+inline void bpt_mgr_t::prepare_suspend()
 {
   if ( process_detached() || process_exiting() )
   {
@@ -3818,7 +3825,7 @@ void bpt_mgr_t::prepare_suspend()
 // the second priority has bpt_rtn (CALL_ORDER_FIRST + 1) and all tracing
 // routines have the lowest priority (CALL_ORDER_LAST)
 //lint -e{1746} parameter 'ins' could be made const reference
-void bpt_mgr_t::add_rtns(INS ins, ADDRINT ins_addr)
+inline void bpt_mgr_t::add_rtns(INS ins, ADDRINT ins_addr)
 {
   DEBUG(3, "bpt_mgr_t::add_rtns (%p) -> %d\n", pvoid(ins_addr), int(control_enabled));
   // add the real instruction instrumentation
@@ -3896,7 +3903,8 @@ void PIN_FAST_ANALYSIS_CALL bpt_mgr_t::ctrl_rtn(ADDRINT addr, const CONTEXT *ctx
 //--------------------------------------------------------------------------
 inline void emit_thread_start_ev(THREADID tid, thread_data_t *tdata)
 {
-  pin_local_event_t ev(THREAD_START, tid, get_ctx_ip(tdata->get_ctx()));
+  pin_local_event_t ev(THREAD_STARTED, tid, get_ctx_ip(tdata->get_ctx()));
+  ev.debev.info[0] = '\0';  // thread name
   DEBUG(2, "THREAD START: %d AT %p\n", tid, pvoid(ev.debev.ea));
   tdata->set_started();
   do_suspend(ev);
@@ -4024,10 +4032,10 @@ void bpt_mgr_t::emit_event(ev_id_t eid, ADDRINT addr, THREADID tid)
   };
   static const bpt_ev_t bpt_evs[] =
   {
-    { "Paused",        PROCESS_SUSPEND },
+    { "Paused",        PROCESS_SUSPENDED },
     { "Single step",   STEP },
     { "Breakpoint",    BREAKPOINT },
-    { "Initial break", PROCESS_ATTACH }
+    { "Initial break", PROCESS_ATTACHED }
   };
   if ( eid != EV_NO_EVENT && !process_detached() && !process_exiting() )
   {
@@ -4036,13 +4044,14 @@ void bpt_mgr_t::emit_event(ev_id_t eid, ADDRINT addr, THREADID tid)
       break_at_next_inst = false;
       stepping_thread = INVALID_THREADID;
     }
+    //lint --e{529} local variable '' not subsequently referenced
     pin_thid ext_tid = thread_data_t::get_ext_thread_id(tid);
     MSG("%s at %p (thread %d/%d)\n", bpt_evs[eid].name, pvoid(addr), int(ext_tid), int(tid));
 
     pin_local_event_t ev(bpt_evs[eid].id, tid, addr);
     ev.debev.bpt.hea = BADADDR;
     ev.debev.bpt.kea = BADADDR;
-    if ( ev.debev.eid == PROCESS_ATTACH )
+    if ( ev.debev.eid == PROCESS_ATTACHED )
       ev.debev.modinfo = start_ev.debev.modinfo;
     do_suspend(ev);
   }
@@ -4139,7 +4148,7 @@ void instrumenter_t::init_instrumentations()
     MSG("NOTICE: No tracing method selected, nothing will be recorded until some tracing method is selected.\n");
   }
 
-  bool control_cb_enabled = breakpoints.need_control_cb();
+  bool control_cb_enabled = breakpoints.need_control_cb();    //lint !e529 not subsequently referenced
   MSG("Init tracing "
       "%croutine%s, %cbblk, %cinstruction%s, %cregs, %cflow\n",
       tracing_routine       ? '+' : '-',
@@ -4412,7 +4421,7 @@ ADDRINT instrumenter_t::rtn_enabled(VOID *)
 // (used for both instruction and bbl tracing modes)
 VOID PIN_FAST_ANALYSIS_CALL instrumenter_t::ins_logic_cb(
         const CONTEXT *ctx,
-        VOID *ip,
+        VOID *ip,   //lint !e818 could be pointer to const
         pin_tev_type_t tev_type)
 {
   if ( check_address((ADDRINT)ip, tev_type) )
@@ -4976,7 +4985,7 @@ inline void suspender_t::stop_threads(const pin_local_event_t &ev)
 //--------------------------------------------------------------------------
 inline void suspender_t::pause_threads()
 {
-  pin_local_event_t ev(PROCESS_SUSPEND);
+  pin_local_event_t ev(PROCESS_SUSPENDED);
   suspend_threads(PAUSING, ev);
   // wake up the suspender thread here: otherwise the program can be sleeping
   // somewhere inside a syscall and the control will not reach in the near
@@ -5231,10 +5240,10 @@ void suspender_t::copy_pending_events_nolock(THREADID curr_tid)
       ADDRINT ea = get_ctx_ip(td->get_ctx());
       if ( ADDRINT(ev.debev.ea) == ADDRINT(BADADDR) )
       {
-        if ( ev.debev.eid != PROCESS_SUSPEND )
+        if ( ev.debev.eid != PROCESS_SUSPENDED )
         {
-          if ( ev.debev.eid != LIBRARY_UNLOAD
-            && ev.debev.eid != THREAD_EXIT )
+          if ( ev.debev.eid != LIB_UNLOADED
+            && ev.debev.eid != THREAD_EXITED )
           {
             if ( curr_tid == INVALID_THREADID )
             {
@@ -5250,9 +5259,9 @@ void suspender_t::copy_pending_events_nolock(THREADID curr_tid)
       else
       {
         if ( ev.debev.ea != ea
-          && ev.debev.eid != LIBRARY_LOAD
-          && ev.debev.eid != LIBRARY_UNLOAD
-          && ev.debev.eid != THREAD_EXIT )
+          && ev.debev.eid != LIB_LOADED
+          && ev.debev.eid != LIB_UNLOADED
+          && ev.debev.eid != THREAD_EXITED )
         {
           if ( curr_tid == INVALID_THREADID )
           {
@@ -5266,7 +5275,7 @@ void suspender_t::copy_pending_events_nolock(THREADID curr_tid)
     }
     else
     {
-      if ( ev.debev.eid != THREAD_EXIT )
+      if ( ev.debev.eid != THREAD_EXITED )
       {
         if ( curr_tid == INVALID_THREADID )
         {
