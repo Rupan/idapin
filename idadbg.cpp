@@ -1109,7 +1109,7 @@ inline void error_msg(const char *msg)    //lint !e715 'msg' not subsequently re
 static int (WSAAPI *p_WSAStartup)(WINDOWS::WORD, WINDOWS::WSADATA *);
 static int (WSAAPI *p_WSAGetLastError)(void);
 static WINDOWS::SOCKET (WSAAPI *p_socket)(int af, int type, int protocol);
-static int (WSAAPI *p_bind)(WINDOWS::SOCKET, const struct WINDOWS::sockaddr *, int );
+static int (WSAAPI *p_bind)(WINDOWS::SOCKET, const struct WINDOWS::sockaddr *, int);
 static int (WSAAPI *p_setsockopt)(WINDOWS::SOCKET, int, int, const char *optval, int optlen);
 static int (WSAAPI *p_listen)(WINDOWS::SOCKET s, int backlog);
 static WINDOWS::SOCKET (WSAAPI *p_accept)(WINDOWS::SOCKET, struct WINDOWS::sockaddr *, int *);
@@ -2708,7 +2708,7 @@ static bool read_handle_packet(idapin_packet_t *res)
     while ( !events.send_event(NULL) )
     {
       if ( listener_uid == PIN_ThreadUid() && PIN_IsProcessExiting() )
-         return false;
+        return false;
       if ( pin_sockwait(10) )
         break;
     }
