@@ -24,7 +24,7 @@
 #endif
 
 //--------------------------------------------------------------------------
-// PIN build 71313 can not load WinSock library
+// PIN build 71313 cannot load WinSock library
 #if defined(_WIN32) && defined(PIN_NUMERIC_BUILD) && PIN_NUMERIC_BUILD == 71313
 # error "IDA does not support PIN build #71313. Please use a newer one instead"
 #endif
@@ -881,16 +881,16 @@ static VOID fini_cb(INT32 code, VOID *)
   instrumenter_t::finish();
   bool ok = suspender.wait_termination();
   if ( !ok )
-    MSG("Can not stop suspender thread\n");
+    MSG("Cannot stop suspender thread\n");
   if ( !instrumenter_t::wait_termination() )
   {
-    MSG("Can not stop instrumenter thread\n");
+    MSG("Cannot stop instrumenter thread\n");
     ok = false;
   }
   if ( listener_uid != INVALID_PIN_THREAD_UID
     && !wait_for_thread_termination(listener_uid) )
   {
-    MSG("Can not stop listener thread\n");
+    MSG("Cannot stop listener thread\n");
     ok = false;
   }
   if ( ok )
@@ -910,7 +910,7 @@ static VOID prepare_fini_cb(VOID *)
   suspender.finish();
   DEBUG(2, "PREPARE_FINI: Everything OK\n");
   // on Windows ws2_32.dll can be unloaded before fini_cb and main thread's
-  // thread_fini_cb, so we can not send events to IDA from them, the better
+  // thread_fini_cb, so we cannot send events to IDA from them, the better
   // place seems to be here. The problem is we do not have yet correct exit code
   // here - just pass 0.
   // Also we should terminate listener thread and send all remaining events here
@@ -1314,7 +1314,7 @@ static bool set_sockopt(PIN_SOCKET sock, int level, int optname, int val)
 //--------------------------------------------------------------------------
 static bool init_socket(void)
 {
-  // Since PIN #71313 we can not use WinSock library (hope in the future it will be
+  // Since PIN #71313 we cannot use WinSock library (hope in the future it will be
   // implemented in PinCRT like Linux sockets), now load library ws2_32.dll manualy
 #ifdef _WIN32
   WINDOWS::HMODULE h = WINDOWS::LoadLibrary(TEXT("ws2_32.dll"));
@@ -2156,7 +2156,10 @@ static bool handle_read_symbols()
 //--------------------------------------------------------------------------
 inline const char *hexval(const void *ptr, int size)
 {
-  static char buf[64*3];
+  static const int MAX_HEXVAL_SIZE = 1024;
+  if ( size > MAX_HEXVAL_SIZE )
+    size = MAX_HEXVAL_SIZE;
+  static char buf[MAX_HEXVAL_SIZE*3];
   buf[0] = 0;
   if ( size == int(sizeof(ADDRINT)) )
   {
@@ -2237,6 +2240,7 @@ static bool handle_read_regs(THREADID tid, int cls)
   int clmask = tdata->available_regs(cls);
   pin_regbuf_t regbuf(clmask);
   size_t bufsize = regbuf.get_bufsize();
+  DEBUG(2, "BUFSIZE=%d\n", int(bufsize));
   idapin_readregs_answer_t ans(bufsize, clmask);
 
   if ( !pin_send(&ans, sizeof(ans), __FUNCTION__) )
@@ -2267,7 +2271,13 @@ static bool handle_read_regs(THREADID tid, int cls)
           if ( size < int(sizeof(ADDRINT)) )
             size = sizeof(ADDRINT);
           pin_value_t *vptr = reg_class->at(regid);
-          memcpy(vptr->v128, pinreg.byte, size);
+          if ( size == 32 )
+          {
+            DEBUG(2, "VPTR->V256: %p\n", vptr->v256);
+            memcpy(vptr->v256, pinreg.byte, size);
+          }
+          else
+            memcpy(vptr->v128, pinreg.byte, size);
           DEBUG(2, "Get register %s/%d: %s\n", regname_by_idx(regid), REG_Size(pin_regid), hexval(vptr, size));
         }
       }
@@ -4816,6 +4826,27 @@ inline REG regidx_pintool2pin(pin_regid_t pintool_reg)
     case PINREG_MMX5: return REG_MM5;
     case PINREG_MMX6: return REG_MM6;
     case PINREG_MMX7: return REG_MM7;
+
+    // ymm registers
+    case PINREG_YMM0: return REG_YMM0;
+    case PINREG_YMM1: return REG_YMM1;
+    case PINREG_YMM2: return REG_YMM2;
+    case PINREG_YMM3: return REG_YMM3;
+    case PINREG_YMM4: return REG_YMM4;
+    case PINREG_YMM5: return REG_YMM5;
+    case PINREG_YMM6: return REG_YMM6;
+    case PINREG_YMM7: return REG_YMM7;
+#if defined(TARGET_IA32E)
+    case PINREG_YMM8: return REG_YMM8;
+    case PINREG_YMM9: return REG_YMM9;
+    case PINREG_YMM10: return REG_YMM10;
+    case PINREG_YMM11: return REG_YMM11;
+    case PINREG_YMM12: return REG_YMM12;
+    case PINREG_YMM13: return REG_YMM13;
+    case PINREG_YMM14: return REG_YMM14;
+    case PINREG_YMM15: return REG_YMM15;
+#endif
+
     default:
       return REG_LAST;
   }
@@ -4895,6 +4926,25 @@ inline const char *regname_by_idx(pin_regid_t pintool_reg)
     case PINREG_MMX5: return "REG_MMX5";
     case PINREG_MMX6: return "REG_MMX6";
     case PINREG_MMX7: return "REG_MMX7";
+
+    // ymm registers
+    case PINREG_YMM0: return "REG_YMM0";
+    case PINREG_YMM1: return "REG_YMM1";
+    case PINREG_YMM2: return "REG_YMM2";
+    case PINREG_YMM3: return "REG_YMM3";
+    case PINREG_YMM4: return "REG_YMM4";
+    case PINREG_YMM5: return "REG_YMM5";
+    case PINREG_YMM6: return "REG_YMM6";
+    case PINREG_YMM7: return "REG_YMM7";
+    case PINREG_YMM8 : return "REG_YMM8";
+    case PINREG_YMM9 : return "REG_YMM9";
+    case PINREG_YMM10: return "REG_YMM10";
+    case PINREG_YMM11: return "REG_YMM11";
+    case PINREG_YMM12: return "REG_YMM12";
+    case PINREG_YMM13: return "REG_YMM13";
+    case PINREG_YMM14: return "REG_YMM14";
+    case PINREG_YMM15: return "REG_YMM15";
+
     default:
       return "REG_UNKNOWN";
   }
@@ -5185,7 +5235,7 @@ void suspender_t::thread_worker()
 }
 
 //--------------------------------------------------------------------------
-// PIN_StopApplicationThreads can not be invoked (hangs) if there is no working
+// PIN_StopApplicationThreads cannot be invoked (hangs) if there is no working
 // thread. Check that one of the following conditions is true:
 // 1. At least one thread is suspended inside an analysis routine of bpt_mgr_t
 // 2. There is a substantial pending event (e.g. BREAKPOINT, STEP). This
