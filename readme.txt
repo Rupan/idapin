@@ -11,4 +11,4 @@ Requirements:
   Windows: pin-81205, msvc-2015
   Linux: pin-81205, gcc 4.8.2 or higher
 
-Copyright Hex-Rays 2014-2017
+Copyright Hex-Rays 2014-2019

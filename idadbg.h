@@ -505,6 +505,28 @@ enum pin_regid_t
   PINREG_MMX6,
   PINREG_MMX7,
 
+  // YMM registers
+  PINREG_FIRST_REG256,
+  PINREG_FIRST_YMMREG = PINREG_FIRST_REG256,
+  PINREG_YMM0 = PINREG_FIRST_YMMREG,
+  PINREG_YMM1,
+  PINREG_YMM2,
+  PINREG_YMM3,
+  PINREG_YMM4,
+  PINREG_YMM5,
+  PINREG_YMM6,
+  PINREG_YMM7,
+  PINREG_YMM8,
+  PINREG_YMM9,
+  PINREG_YMM10,
+  PINREG_YMM11,
+  PINREG_YMM12,
+  PINREG_YMM13,
+  PINREG_YMM14,
+  PINREG_YMM15,
+  PINREG_LAST_YMMREG = PINREG_YMM15,
+  PINREG_LAST_REG256 = PINREG_LAST_YMMREG,
+
   PINREG_MAX
 };
 
@@ -518,6 +540,8 @@ inline int max_regsize(pin_regid_t regind)
   }
   if ( regind >= PINREG_FIRST_REG128 && regind <= PINREG_LAST_REG128 )
     return 16;
+  if ( regind >= PINREG_FIRST_REG256 && regind <= PINREG_LAST_REG256 )
+    return 32;
   return 0;     // bad regnum
 }
 
@@ -528,8 +552,9 @@ enum pin_register_class_t
   PIN_RC_SEGMENTS         = 0x02,
   PIN_RC_FPU              = 0x04,
   PIN_RC_XMM              = 0x10,
-  PIN_RC_NCLASSES         = 4,       // number of register classes
+  PIN_RC_YMM              = 0x20,
 };
+#define PIN_RC_NCLASSES 5 // number of register classes
 
 //--------------------------------------------------------------------------
 inline int regsize_by_class(pin_register_class_t cls)
@@ -556,6 +581,7 @@ inline const char *regclass_name(pin_register_class_t cls)
     case PIN_RC_SEGMENTS: return "RC_SEGMENTS";
     case PIN_RC_FPU:      return "RC_FPU";
     case PIN_RC_XMM:      return "RC_XMM";
+    case PIN_RC_YMM:      return "RC_YMM";
     default:              return "RC_UNKNOWN";
   }
 }
@@ -563,15 +589,18 @@ inline const char *regclass_name(pin_register_class_t cls)
 //--------------------------------------------------------------------------
 #define NUMBER_OF_REGS_64   int(PINREG_LAST_REG64  - PINREG_FIRST_INTREG)
 #define NUMBER_OF_REGS_128  int(PINREG_LAST_REG128 - PINREG_FIRST_REG128)
+#define NUMBER_OF_REGS_256  int(PINREG_LAST_REG256 - PINREG_FIRST_REG256)
 
 //--------------------------------------------------------------------------
 typedef unsigned char pin_value64_t[8];
 typedef unsigned char pin_value128_t[16];
+typedef unsigned char pin_value256_t[32];
 
 typedef union
 {
   pin_value64_t v64;
   pin_value128_t v128;
+  pin_value256_t v256;
 } pin_value_t;
 
 class pin_classregs_t
@@ -600,6 +629,7 @@ private:
   {
     pin_value64_t vals64[NUMBER_OF_REGS_64];
     pin_value128_t vals128[NUMBER_OF_REGS_128];
+    pin_value256_t vals256[NUMBER_OF_REGS_256];
   } rvals_t;
   rvals_t *pvals;
   pin_regid_t firstreg;
@@ -634,6 +664,10 @@ inline bool pin_classregs_t::init(pin_register_class_t cls, bool is_32bit)
     case PIN_RC_XMM:
       firstnum = PINREG_FIRST_XMMREG;
       lastnum = is_32bit ? PINREG_XMM7 : PINREG_LAST_XMMREG;    //-V547 'is_32bit' is always true
+      break;
+    case PIN_RC_YMM:
+      firstnum = PINREG_FIRST_YMMREG;
+      lastnum = PINREG_LAST_YMMREG;
       break;
     default:
       return false;   // bad class
@@ -681,7 +715,7 @@ inline void pin_regbuf_t::init(int clsmask, bool is_32bit)
   is_32bit = true;
 #endif
   static pin_register_class_t all_cls[] =
-    { PIN_RC_GENERAL, PIN_RC_SEGMENTS, PIN_RC_FPU, PIN_RC_XMM };
+    { PIN_RC_GENERAL, PIN_RC_SEGMENTS, PIN_RC_FPU, PIN_RC_XMM, PIN_RC_YMM };
   for ( size_t i = 0; i < sizeof(all_cls) / sizeof(all_cls[0]); ++i )
   {
     if ( (clsmask & all_cls[i]) != 0 )
@@ -709,9 +743,15 @@ inline const pin_value_t *pin_classregs_t::at(pin_regid_t regno) const
 {
   if ( pvals == NULL )
     return NULL;
-  return valsize == 8
-       ? (const pin_value_t *)&pvals->vals64[idx(regno)]
-       : (const pin_value_t *)&pvals->vals128[idx(regno)];
+  switch ( valsize )
+  {
+    case 32:
+      return (const pin_value_t *)&pvals->vals256[idx(regno)];
+    case 16:
+      return (const pin_value_t *)&pvals->vals128[idx(regno)];
+    default:
+      return (const pin_value_t *)&pvals->vals64[idx(regno)];
+  }
 }
 
 //--------------------------------------------------------------------------
@@ -719,16 +759,22 @@ inline pin_value_t *pin_classregs_t::at(pin_regid_t regno)
 {
   if ( pvals == NULL )
     return NULL;
-  return valsize == 8
-       ? (pin_value_t *)&pvals->vals64[idx(regno)]
-       : (pin_value_t *)&pvals->vals128[idx(regno)];
+  switch ( valsize )
+  {
+    case 32:
+      return (pin_value_t *)&pvals->vals256[idx(regno)];
+    case 16:
+      return (pin_value_t *)&pvals->vals128[idx(regno)];
+    default:
+      return (pin_value_t *)&pvals->vals64[idx(regno)];
+  }
 }
 
 //--------------------------------------------------------------------------
 struct pin_regval_t
 {
   uint32 regidx;          // pin_regid_t
-  char regval[16];        // value
+  char regval[32];        // value
 };
 
 //--------------------------------------------------------------------------
