@@ -145,7 +145,7 @@ typedef WINDOWS::SOCKET SOCKET;
   {                                                         \
     if ( debug_level > 0 )                                  \
     {                                                       \
-      char _buf[MAXSTR*2];                                  \
+      char _buf[MAXSTR*4];                                  \
       pin_snprintf(_buf, sizeof(_buf), fmt, ##__VA_ARGS__); \
       fprintf(stderr, "%s", _buf);                          \
       LOG(_buf);                                            \
