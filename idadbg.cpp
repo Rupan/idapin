@@ -9,6 +9,14 @@
 #endif
 #include <pin.H>
 
+// PIN_PRODUCT_VERSION_MAJOR is not defined since pin-3.10
+#ifndef PIN_PRODUCT_VERSION_MAJOR
+#define PIN_3_10_OR_HIGHER
+#define PIN_PRODUCT_VERSION_MAJOR 3
+#define PIN_PRODUCT_VERSION_MINOR 10
+#define PIN_BUILD_NUMBER 97971
+#endif
+
 //--------------------------------------------------------------------------
 #if PIN_PRODUCT_VERSION_MAJOR < 3 || PIN_PRODUCT_VERSION_MAJOR == 3 && PIN_PRODUCT_VERSION_MINOR < 7
 #define PIN_NUMERIC_BUILD PIN_BUILD_NUMBER
@@ -22,6 +30,11 @@
 #if defined(__GNUC__) && __GNUC__ >= 7
 #pragma GCC diagnostic warning "-Waligned-new=all"
 #endif
+
+//--------------------------------------------------------------------------
+#define PIN_STR_TO_BUF(buf, s) \
+  pin_strncpy(buf, s.c_str(), sizeof(buf)-1); \
+  buf[sizeof(buf)-1] = '\0';
 
 //--------------------------------------------------------------------------
 // PIN build 71313 cannot load WinSock library
@@ -41,6 +54,15 @@
 #define PIN_SetExiting()       (process_state = APP_STATE_EXITING)
 #elif !defined(_WIN32)
 #define PIN_SetExiting()
+#endif
+
+// avoid deprecated functions
+#ifdef PIN_3_10_OR_HIGHER
+#define pin_IMG_Entry IMG_EntryAddress
+#define pin_INS_IsBranchOrCall(i)  (INS_IsBranch(i) || INS_IsCall(i))
+#else
+#define pin_IMG_Entry IMG_Entry
+#define pin_INS_IsBranchOrCall(i) INS_IsBranchOrCall(i)
 #endif
 
 //--------------------------------------------------------------------------
@@ -985,9 +1007,9 @@ static VOID image_load_cb(IMG img, VOID *)
   MSG("Loading library %s %p:%p, %d symbols\n", IMG_Name(img).c_str(), pvoid(start_ea), pvoid(end_ea), nsyms);
 
   pin_local_event_t event(LIB_LOADED,
-                          thread_data_t::get_thread_id(), IMG_Entry(img));
+                          thread_data_t::get_thread_id(), pin_IMG_Entry(img));
   pin_debug_event_t &ev = event.debev;
-  pin_strncpy(ev.modinfo.name, IMG_Name(img).c_str(), sizeof(ev.modinfo.name));
+  PIN_STR_TO_BUF(ev.modinfo.name, IMG_Name(img));
   ev.modinfo.base = start_ea;
   ev.modinfo.size = (pin_size_t)(end_ea - start_ea);
   ev.modinfo.rebase_to = BADADDR;
@@ -1005,7 +1027,7 @@ static VOID image_load_cb(IMG img, VOID *)
 static VOID image_unload_cb(IMG img, VOID *)
 {
   pin_local_event_t ev(LIB_UNLOADED);
-  pin_strncpy(ev.debev.info, IMG_Name(img).c_str(), sizeof(ev.debev.info));
+  PIN_STR_TO_BUF(ev.debev.info, IMG_Name(img));
   enqueue_event(ev);
 
   MSG("Unloading %s\n", IMG_Name(img).c_str());
@@ -1260,7 +1282,7 @@ static bool accept_conn()
   }
   // valid client: read the rest of 'hello' packed
   idapin_packet_t req;
-  memcpy(&req, &req_v1, sizeof(idapin_packet_v1_t));    //-V512 underflow of the buffer '& req'
+  memcpy((idapin_packet_v1_t *)&req, &req_v1, sizeof(idapin_packet_v1_t));    //-V512 underflow of the buffer '& req'
   int rest = sizeof(idapin_packet_t) - sizeof(idapin_packet_v1_t);
   if ( rest > 0 )   //-V547 'rest > 0' is always true
   {
@@ -1389,10 +1411,19 @@ static bool init_socket(void)
 
   if ( pin_listen(srv_socket, 1) == 0 )
   {
+#ifdef PIN_3_10_OR_HIGHER
+    std::string ver = PIN_Version();
+    size_t end = ver.find('\n');
+    if ( end != std::string::npos )
+      ver.resize(end);
+    MSG("Listening at port %d, protocol version is %d, %s\n",
+         (int)portno, PIN_PROTOCOL_VERSION, ver.c_str());
+#else
     MSG("Listening at port %d, protocol version is %d, "
         "PIN version %d.%d (build " XSTR_BUILDNUM(PIN_BUILD_NUMBER) ")\n",
          (int)portno, PIN_PROTOCOL_VERSION,
          PIN_PRODUCT_VERSION_MAJOR, PIN_PRODUCT_VERSION_MINOR);
+#endif
 
     int to = knob_connect_timeout;
 
@@ -1472,8 +1503,8 @@ static VOID app_start_cb(VOID *)
   }
 
   start_ev.debev.eid = PROCESS_STARTED;
-  start_ev.debev.ea = IMG_Entry(img);
-  pin_strncpy(start_ev.debev.modinfo.name, IMG_Name(img).c_str(), sizeof(start_ev.debev.modinfo.name));
+  start_ev.debev.ea = pin_IMG_Entry(img);
+  PIN_STR_TO_BUF(start_ev.debev.modinfo.name, IMG_Name(img));
   start_ev.debev.modinfo.base = start_ea;
   start_ev.debev.modinfo.rebase_to = BADADDR;
   start_ev.debev.modinfo.size = (uint32)(end_ea - start_ea);
@@ -1576,7 +1607,7 @@ static EXCEPT_HANDLING_RESULT internal_excp_cb(
   event.ea = ea_t(PIN_GetExceptionAddress(ex_info));
   event.exc.ea = event.ea;
   string strinfo = PIN_ExceptionToString(ex_info);
-  strncpy(event.exc.info, strinfo.c_str(), sizeof(event.exc.info));
+  PIN_STR_TO_BUF(event.exc.info, strinfo);
   thread_data_t *tdata = thread_data_t::get_thread_data(tid);
   tdata->save_phys_ctx(ctxt);
 
@@ -2026,7 +2057,7 @@ static void get_os_segments(pin_meminfo_vec_t &miv)
       pin_memory_info_t mi;
       mi.start_ea = me.ea1;
       mi.end_ea   = me.ea2;
-      pin_strncpy(mi.name, me.fname.c_str(), sizeof(mi.name));
+      PIN_STR_TO_BUF(mi.name, me.fname);
       mi.bitness = BITNESS;
 
       if ( strchr(me.perm, 'r') != NULL ) mi.perm |= SEGPERM_READ;
@@ -2076,7 +2107,7 @@ static bool handle_memory_info(void)
         string sec_name;
         sec_name = IMG_Name(img) + ":" + SEC_Name(sec);
         memset(mi.name, '\0', sizeof(mi.name));
-        pin_strncpy(mi.name, sec_name.c_str(), sizeof(mi.name));
+        PIN_STR_TO_BUF(mi.name, sec_name);
         mi.bitness = BITNESS;
 
         mi.perm = 0;
@@ -4390,7 +4421,7 @@ bool instrumenter_t::add_bbl_logic_cb(INS ins, bool first)
 {
   if ( tracing_bblock )
   {
-    if ( (first || INS_IsBranchOrCall(ins) || INS_IsRet(ins) || INS_IsSyscall(ins) || !ins.is_valid()) )
+    if ( (first || pin_INS_IsBranchOrCall(ins) || INS_IsRet(ins) || INS_IsSyscall(ins) || !ins.is_valid()) )
     {
       pin_tev_type_t tev_type = tev_insn;
       if ( INS_IsCall(ins) )

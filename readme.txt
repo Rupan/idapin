@@ -8,7 +8,7 @@ The PIN tool is shipped in the source form. You will need to compile it
 for your operating system and PIN version.
 
 Requirements:
-  Windows: pin-81205, msvc-2015
-  Linux: pin-81205, gcc 4.8.2 or higher
+  Windows: pin-81205 or higher, msvc-2015, msvc-2017
+  Linux: pin-81205 or higher, gcc 4.8.2 or higher
 
 Copyright Hex-Rays 2014-2019
