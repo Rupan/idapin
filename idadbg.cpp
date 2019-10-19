@@ -4867,7 +4867,7 @@ inline REG regidx_pintool2pin(pin_regid_t pintool_reg)
     case PINREG_YMM5: return REG_YMM5;
     case PINREG_YMM6: return REG_YMM6;
     case PINREG_YMM7: return REG_YMM7;
-#if defined(TARGET_IA32E)
+#ifdef PIN_64
     case PINREG_YMM8: return REG_YMM8;
     case PINREG_YMM9: return REG_YMM9;
     case PINREG_YMM10: return REG_YMM10;
@@ -4967,6 +4967,7 @@ inline const char *regname_by_idx(pin_regid_t pintool_reg)
     case PINREG_YMM5: return "REG_YMM5";
     case PINREG_YMM6: return "REG_YMM6";
     case PINREG_YMM7: return "REG_YMM7";
+#ifdef PIN_64
     case PINREG_YMM8 : return "REG_YMM8";
     case PINREG_YMM9 : return "REG_YMM9";
     case PINREG_YMM10: return "REG_YMM10";
@@ -4975,6 +4976,7 @@ inline const char *regname_by_idx(pin_regid_t pintool_reg)
     case PINREG_YMM13: return "REG_YMM13";
     case PINREG_YMM14: return "REG_YMM14";
     case PINREG_YMM15: return "REG_YMM15";
+#endif
 
     default:
       return "REG_UNKNOWN";
