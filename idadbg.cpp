@@ -13,8 +13,8 @@
 #ifndef PIN_PRODUCT_VERSION_MAJOR
 #define PIN_3_10_OR_HIGHER
 #define PIN_PRODUCT_VERSION_MAJOR 3
-#define PIN_PRODUCT_VERSION_MINOR 10
-#define PIN_BUILD_NUMBER 97971
+#define PIN_PRODUCT_VERSION_MINOR 13
+#define PIN_BUILD_NUMBER 98189
 #endif
 
 //--------------------------------------------------------------------------
