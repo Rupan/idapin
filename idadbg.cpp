@@ -9,12 +9,19 @@
 #endif
 #include <pin.H>
 
-// PIN_PRODUCT_VERSION_MAJOR is not defined since pin-3.10
+// PIN_PRODUCT_VERSION_MAJOR is not defined in pin-3.10
 #ifndef PIN_PRODUCT_VERSION_MAJOR
-#define PIN_3_10_OR_HIGHER
 #define PIN_PRODUCT_VERSION_MAJOR 3
 #define PIN_PRODUCT_VERSION_MINOR 10
 #define PIN_BUILD_NUMBER 97971
+#endif
+
+#ifndef PIN_BUILD_NUMBER
+#error PIN_BUILD_NUMBER undefined
+#endif
+
+#if PIN_BUILD_NUMBER >= 97971
+#define PIN_3_10_OR_HIGHER
 #endif
 
 //--------------------------------------------------------------------------
@@ -260,9 +267,6 @@ public:
 
   static inline thread_data_t *get_any_stopped_thread(THREADID *tid);
 
-  static inline bool is_meminfo_changed();
-  static inline void set_meminfo_changed(bool val);
-
   static inline void add_all_thread_areas(pin_meminfo_vec_t *miv);
 
   static inline ssize_t read_memory(void *dst, ADDRINT ea, size_t size);
@@ -309,7 +313,6 @@ private:
   static PIN_LOCK thr_data_lock;
   static bool thr_data_lock_inited;
   static PIN_LOCK meminfo_lock;
-  static bool meminfo_changed;
 };
 
 //--------------------------------------------------------------------------
@@ -823,8 +826,7 @@ inline bool pop_debug_event(pin_local_event_t *out_ev, bool *can_resume)
       DEBUG(2, "pop event->correct tid(%d)/ea(%p)\n", out_ev->debev.tid, pvoid(out_ev->debev.ea));
     }
   }
-  if ( thread_data_t::is_meminfo_changed() || out_ev->debev.eid == THREAD_STARTED )
-    out_ev->debev.flags |= PIN_DEBEV_REFRESH_MEMINFO;
+  out_ev->debev.flags |= PIN_DEBEV_REFRESH_MEMINFO;
   return true;
 }
 
@@ -1068,7 +1070,6 @@ static void emit_process_start_ev()
 static VOID thread_start_cb(THREADID tid, CONTEXT *ctx, INT32, VOID *)
 {
   inc_thr_age("thread_start");
-  thread_data_t::set_meminfo_changed(true);
 
   DEBUG(2, "thread_start_cb(%d/%d)\n", int(tid), int(thread_data_t::get_ext_thread_id(tid)));
 
@@ -1101,7 +1102,6 @@ static VOID thread_fini_cb(THREADID tid, const CONTEXT *ctx, INT32 code, VOID *)
   inc_thr_age("thread_fini");
   thread_data_t *tdata = thread_data_t::get_thread_data(tid);
   tdata->save_ctx(ctx);
-  thread_data_t::set_meminfo_changed(true);
 
   pin_local_event_t ev(THREAD_EXITED, tid, get_ctx_ip(ctx));
   ev.debev.exit_code = code;
@@ -2143,7 +2143,6 @@ static bool handle_memory_info(void)
         break;
       }
     }
-    thread_data_t::set_meminfo_changed(false);
   }
 
   return ret;
@@ -2178,7 +2177,7 @@ static bool handle_read_symbols()
   if ( pin_send(&pkt, sizeof(pkt), "symbols(1)") )
   {
     // send the buffer
-    ret = bufsize == 0 ? true : pin_send(symbuf, bufsize, "symbols(2)");
+    ret = bufsize == 0 || pin_send(symbuf, bufsize, "symbols(2)");
   }
   free(symbuf);
 
@@ -2910,7 +2909,6 @@ std::map <pin_thid, THREADID> thread_data_t::local_tids;
 bool thread_data_t::thr_data_lock_inited = false;
 PIN_LOCK thread_data_t::thr_data_lock;
 PIN_LOCK thread_data_t::meminfo_lock;
-bool thread_data_t::meminfo_changed = false;
 
 //--------------------------------------------------------------------------
 // thr_data_lock should be acquired by the caller
@@ -3015,7 +3013,6 @@ inline bool thread_data_t::save_curr_thread_ctx(const CONTEXT *src_ctx)
   ADDRINT curr_sp = PIN_GetContextReg(ctx, REG_STACK_PTR);
   if ( curr_sp > stack_top() || curr_sp < stack_bottom() )
   { // no valid stack limits, try to refresh
-    set_meminfo_changed(true);
     nt_tib.StackBase = NULL;
     nt_tib.StackLimit = NULL;
     if ( tibbase == NULL )
@@ -3040,21 +3037,6 @@ inline bool thread_data_t::save_curr_thread_ctx(const CONTEXT *src_ctx)
   }
 #endif
   return ok;
-}
-
-//--------------------------------------------------------------------------
-inline bool thread_data_t::is_meminfo_changed()
-{
-  janitor_for_pinlock_t plj(&meminfo_lock);
-  return meminfo_changed;
-}
-
-//--------------------------------------------------------------------------
-inline void thread_data_t::set_meminfo_changed(bool val)
-{
-  DEBUG(2, "set_meminfo_changed %d -> %d\n", meminfo_changed, val);
-  janitor_for_pinlock_t plj(&meminfo_lock);
-  meminfo_changed = val;
 }
 
 //--------------------------------------------------------------------------
