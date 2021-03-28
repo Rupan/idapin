@@ -23,7 +23,7 @@
     <RootNamespace>MyPinTool</RootNamespace>
     <Keyword>Win32Proj</Keyword>
     <ProjectName>idadbg</ProjectName>
-    <WindowsTargetPlatformVersion>10.0.18362.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0.19041.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
@@ -94,7 +94,7 @@
     <ClCompile>
       <AdditionalOptions>/EHs- /EHa- %(AdditionalOptions)</AdditionalOptions>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>..\..\..\source\include\pin;..\..\..\source\include\pin\gen;..\..\..\extras/stlport/include;..\..\..\extras;..\..\..\extras\libstdc++\include;..\..\..\extras\crt\include;..\..\..\extras\crt;..\..\..\extras/crt/include/kernel/uapi;..\..\..\extras/crt/include/kernel/uapi/asm-x86;..\..\..\extras\components\include;..\..\..\source\tools\InstLib;..\..\..\extras\crt\include\arch-x86;..\..\..\extras\xed-ia32\include\xed;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\..\include\pin;..\..\include\pin\gen;..\InstLib;..\..\..\extras\xed-ia32\include\xed;..\..\..\extras\components\include;..\..\..\extras\stlport\include;..\..\..\extras;..\..\..\extras\libstdc++\include;..\..\..\extras\crt\include;..\..\..\extras\crt;..\..\..\extras\crt\include\arch-x86;..\..\..\extras\crt\include\kernel\uapi;..\..\..\extras\crt\include\kernel\uapi\asm-x86;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>TARGET_IA32;HOST_IA32;TARGET_WINDOWS;BIGARRAY_MULTIPLIER=1;USING_XED;_CRT_SECURE_NO_DEPRECATE;_SECURE_SCL=0;WIN32;__PIN__=1;PIN_CRT=1;_WINDOWS_H_PATH_=$(WindowsSdkDir)Include\$(TargetPlatformVersion)\um;</PreprocessorDefinitions>
       <MinimalRebuild>false</MinimalRebuild>
       <ExceptionHandling>
@@ -115,8 +115,8 @@
     </ClCompile>
     <Link>
       <AdditionalOptions>/export:main /PDBALTPATH:%_PDB% %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalDependencies>../../..//ia32/runtime/pincrt/crtbeginS.obj;pin.lib;xed.lib;pinvm.lib;stlport-static.lib;m-static.lib;c-static.lib;os-apis.lib;ntdll-32.lib;kernel32.lib;ntdll-32.lib;kernel32.lib</AdditionalDependencies>
-      <AdditionalLibraryDirectories>../../../ia32/lib;../../../ia32/lib-ext;../../../ia32/runtime/pincrt;../../../extras/xed-ia32/lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>pin.lib;xed.lib;pinvm.lib;pincrt.lib;ntdll-32.lib;kernel32.lib;crtbeginS.obj</AdditionalDependencies>
+      <AdditionalLibraryDirectories>..\..\..\ia32\lib;..\..\..\ia32\lib-ext;..\..\..\extras\xed-ia32\lib;..\..\..\ia32\runtime\pincrt;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
       <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -137,7 +137,7 @@
     <ClCompile>
       <AdditionalOptions>/EHs- /EHa- %(AdditionalOptions)</AdditionalOptions>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>..\..\..\source\include\pin;..\..\..\source\include\pin\gen;..\..\..\extras/stlport/include;..\..\..\extras;..\..\..\extras\libstdc++\include;..\..\..\extras\crt\include;..\..\..\extras\crt;..\..\..\extras/crt/include/kernel/uapi;..\..\..\extras/crt/include/kernel/uapi/asm-x86;..\..\..\extras\components\include;..\..\..\source\tools\InstLib;..\..\..\extras\crt\include\arch-x86_64;..\..\..\extras\xed-intel64\include\xed;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\..\include\pin;..\..\include\pin\gen;..\InstLib;..\..\..\extras\xed-intel64\include\xed;..\..\..\extras\components\include;..\..\..\extras\stlport\include;..\..\..\extras;..\..\..\extras\libstdc++\include;..\..\..\extras\crt\include;..\..\..\extras\crt;..\..\..\extras\crt\include\arch-x86_64;..\..\..\extras\crt\include\kernel\uapi;..\..\..\extras\crt\include\kernel\uapi\asm-x86;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>TARGET_IA32E;HOST_IA32E;__LP64__;TARGET_WINDOWS;BIGARRAY_MULTIPLIER=1;USING_XED;_CRT_SECURE_NO_DEPRECATE;_SECURE_SCL=0;WIN32;__PIN__=1;PIN_CRT=1;_WINDOWS_H_PATH_=$(WindowsSdkDir)Include\$(TargetPlatformVersion)\um;</PreprocessorDefinitions>
       <MinimalRebuild>false</MinimalRebuild>
       <ExceptionHandling>
@@ -158,8 +158,8 @@
     </ClCompile>
     <Link>
       <AdditionalOptions>/export:main /PDBALTPATH:idadbg64.pdb %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalDependencies>../../../intel64/runtime/pincrt/crtbeginS.obj;pin.lib;xed.lib;pinvm.lib;stlport-static.lib;m-static.lib;c-static.lib;os-apis.lib;ntdll-64.lib;kernel32.lib</AdditionalDependencies>
-      <AdditionalLibraryDirectories>../../../intel64/lib;../../../intel64/lib-ext;../../../intel64/runtime/pincrt;../../../extras/xed-intel64/lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>pin.lib;xed.lib;pinvm.lib;pincrt.lib;ntdll-64.lib;kernel32.lib;crtbeginS.obj</AdditionalDependencies>
+      <AdditionalLibraryDirectories>..\..\..\intel64\lib;..\..\..\intel64\lib-ext;..\..\..\extras\xed-intel64\lib;..\..\..\intel64\runtime\pincrt;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
       <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -183,7 +183,7 @@
       <AdditionalOptions>/EHs- /EHa- %(AdditionalOptions)</AdditionalOptions>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <WholeProgramOptimization>false</WholeProgramOptimization>
-      <AdditionalIncludeDirectories>..\..\..\source\include\pin;..\..\..\source\include\pin\gen;..\..\..\extras/stlport/include;..\..\..\extras;..\..\..\extras\libstdc++\include;..\..\..\extras\crt\include;..\..\..\extras\crt;..\..\..\extras/crt/include/kernel/uapi;..\..\..\extras/crt/include/kernel/uapi/asm-x86;..\..\..\extras\components\include;..\..\..\source\tools\InstLib;..\..\..\extras\crt\include\arch-x86;..\..\..\extras\xed-ia32\include\xed;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\..\include\pin;..\..\include\pin\gen;..\InstLib;..\..\..\extras\xed-ia32\include\xed;..\..\..\extras\components\include;..\..\..\extras\stlport\include;..\..\..\extras;..\..\..\extras\libstdc++\include;..\..\..\extras\crt\include;..\..\..\extras\crt;..\..\..\extras\crt\include\arch-x86;..\..\..\extras\crt\include\kernel\uapi;..\..\..\extras\crt\include\kernel\uapi\asm-x86;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>TARGET_IA32;HOST_IA32;TARGET_WINDOWS;BIGARRAY_MULTIPLIER=1;USING_XED;_CRT_SECURE_NO_DEPRECATE;_SECURE_SCL=0;WIN32;__PIN__=1;PIN_CRT=1;_WINDOWS_H_PATH_=$(WindowsSdkDir)Include\$(TargetPlatformVersion)\um;</PreprocessorDefinitions>
       <MinimalRebuild>false</MinimalRebuild>
       <ExceptionHandling>
@@ -205,8 +205,8 @@
     </ClCompile>
     <Link>
       <AdditionalOptions>/export:main /PDBALTPATH:%_PDB% %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalDependencies>../../..//ia32/runtime/pincrt/crtbeginS.obj;pin.lib;xed.lib;pinvm.lib;stlport-static.lib;m-static.lib;c-static.lib;os-apis.lib;ntdll-32.lib;kernel32.lib;kernel32.lib</AdditionalDependencies>
-      <AdditionalLibraryDirectories>../../../ia32/lib;../../../ia32/lib-ext;../../../ia32/runtime/pincrt;../../../extras/xed-ia32/lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>pin.lib;xed.lib;pinvm.lib;pincrt.lib;ntdll-32.lib;kernel32.lib;crtbeginS.obj</AdditionalDependencies>
+      <AdditionalLibraryDirectories>..\..\..\ia32\lib;..\..\..\ia32\lib-ext;..\..\..\extras\xed-ia32\lib;..\..\..\ia32\runtime\pincrt;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
       <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -234,7 +234,7 @@
       <AdditionalOptions>/EHs- /EHa- %(AdditionalOptions)</AdditionalOptions>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <WholeProgramOptimization>false</WholeProgramOptimization>
-      <AdditionalIncludeDirectories>..\..\..\source\include\pin;..\..\..\source\include\pin\gen;..\..\..\extras/stlport/include;..\..\..\extras;..\..\..\extras\libstdc++\include;..\..\..\extras\crt\include;..\..\..\extras\crt;..\..\..\extras/crt/include/kernel/uapi;..\..\..\extras/crt/include/kernel/uapi/asm-x86;..\..\..\extras\components\include;..\..\..\source\tools\InstLib;..\..\..\extras\crt\include\arch-x86_64;..\..\..\extras\xed-intel64\include\xed;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\..\include\pin;..\..\include\pin\gen;..\InstLib;..\..\..\extras\xed-intel64\include\xed;..\..\..\extras\components\include;..\..\..\extras\stlport\include;..\..\..\extras;..\..\..\extras\libstdc++\include;..\..\..\extras\crt\include;..\..\..\extras\crt;..\..\..\extras\crt\include\arch-x86_64;..\..\..\extras\crt\include\kernel\uapi;..\..\..\extras\crt\include\kernel\uapi\asm-x86;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>TARGET_IA32E;HOST_IA32E;__LP64__;TARGET_WINDOWS;BIGARRAY_MULTIPLIER=1;USING_XED;_CRT_SECURE_NO_DEPRECATE;_SECURE_SCL=0;WIN32;__PIN__=1;PIN_CRT=1;_WINDOWS_H_PATH_=$(WindowsSdkDir)Include\$(TargetPlatformVersion)\um;</PreprocessorDefinitions>
       <MinimalRebuild>false</MinimalRebuild>
       <ExceptionHandling>
@@ -256,8 +256,8 @@
     </ClCompile>
     <Link>
       <AdditionalOptions>/export:main /PDBALTPATH:idadbg64.pdb %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalDependencies>../../../intel64/runtime/pincrt/crtbeginS.obj;pin.lib;xed.lib;pinvm.lib;stlport-static.lib;m-static.lib;c-static.lib;os-apis.lib;ntdll-64.lib;kernel32.lib</AdditionalDependencies>
-      <AdditionalLibraryDirectories>../../../intel64/lib;../../../intel64/lib-ext;../../../intel64/runtime/pincrt;../../../extras/xed-intel64/lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>pin.lib;xed.lib;pinvm.lib;pincrt.lib;ntdll-64.lib;kernel32.lib;crtbeginS.obj</AdditionalDependencies>
+      <AdditionalLibraryDirectories>..\..\..\intel64\lib;..\..\..\intel64\lib-ext;..\..\..\extras\xed-intel64\lib;..\..\..\intel64\runtime\pincrt;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
       <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
       <GenerateDebugInformation>true</GenerateDebugInformation>
