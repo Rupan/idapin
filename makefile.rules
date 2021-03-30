@@ -10,8 +10,14 @@ ifeq ($(TARGET),intel64)
   BITNESS := 64
 endif
 
-TOOL_CXXFLAGS += -Wno-deprecated-declarations -g
-TOOL_CXXFLAGS_NOOPT += -Wno-deprecated-declarations -g
+ifeq ($(TARGET_OS),linux)
+    TOOL_CXXFLAGS += -Wno-deprecated-declarations -g
+    TOOL_CXXFLAGS_NOOPT += -Wno-deprecated-declarations -g
+endif
+
+ifeq ($(TARGET_OS),windows)
+    TOOL_LDFLAGS += /DEBUG /PDBALTPATH:%_PDB%
+endif
 
 ##############################################################
 #
