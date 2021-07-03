@@ -16,7 +16,7 @@ ifeq ($(TARGET_OS),linux)
 endif
 
 ifeq ($(TARGET_OS),windows)
-    TOOL_LDFLAGS += /DEBUG /PDBALTPATH:%_PDB%
+    TOOL_LDFLAGS += /DEBUG:FULL /PDBALTPATH:%_PDB%
 endif
 
 ##############################################################
