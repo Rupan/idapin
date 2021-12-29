@@ -1,8 +1,8 @@
 /*
 
     IDA trace: PIN tool to communicate with IDA's debugger
-    Last supported linux version:   3.17-98314
-    Last supported windows version: 3.17-98314
+    Last supported linux version:   3.19-98425
+    Last supported windows version: 3.18-98332
 
 */
 
@@ -150,8 +150,17 @@ static bool serve_sync(void);
 inline void get_context_regs(const CONTEXT *ctx, idapin_registers_t *regs);
 inline void get_phys_context_regs(const PHYSICAL_CONTEXT *ctx, idapin_registers_t *regs);
 
+//--------------------------------------------------------------------------
+#if PIN_BUILD_NUMBER >= 98425
+// REG_FPTAG_FULL is removed since 3.19-98425, define original index for it here
+#define NONSTD_FPTAG_FULL
+#define REG_FPTAG_FULL (REG_LAST+1)
+typedef int PINTOOL_REG;
+#else
+typedef REG PINTOOL_REG;
+#endif
+static PINTOOL_REG regidx_pintool2pin(pin_regid_t pintool_reg);
 inline const char *regname_by_idx(pin_regid_t pintool_reg);
-inline REG regidx_pintool2pin(pin_regid_t pintool_reg);
 
 //--------------------------------------------------------------------------
 // application process state
@@ -242,7 +251,7 @@ public:
   inline void save_phys_ctx(const PHYSICAL_CONTEXT *phys_ctx);
   inline void set_ctx_reg(REG pinreg, ADDRINT regval);
   inline void export_ctx(idapin_registers_t *regs);
-  inline bool change_regval(REG regno, const UINT8 *regval);
+  inline bool change_regval(PINTOOL_REG regno, const UINT8 *regval);
   inline void continue_execution(int restarted_from);
   inline bool can_break(ADDRINT addr) const;
   int available_regs(int clsmask) const;
@@ -2257,6 +2266,35 @@ static bool handle_read_trace(void)
 }
 
 //--------------------------------------------------------------------------
+int get_pinreg_size(PINTOOL_REG regid)
+{
+#ifdef NONSTD_FPTAG_FULL
+  if ( regid == REG_FPTAG_FULL )
+    return 8;
+#endif
+  return REG_Size((REG)regid);
+}
+
+//--------------------------------------------------------------------------
+static void const get_context_reg(CONTEXT *ctxt, PINTOOL_REG regid, UINT8 *val)
+{
+#ifdef NONSTD_FPTAG_FULL
+  if ( regid == REG_FPTAG_FULL )
+  {
+    // get fpstate from context (see source/tools/Regvalue/fptag_conversion.cpp)
+    unsigned char fpstate_buf[sizeof(FPSTATE) + FPSTATE_ALIGNMENT];
+    FPSTATE *fpstate = reinterpret_cast<FPSTATE *>(
+        (reinterpret_cast<ADDRINT>(fpstate_buf) + (FPSTATE_ALIGNMENT - 1)) & (-1 * FPSTATE_ALIGNMENT));
+    PIN_GetContextFPState(ctxt, fpstate);
+    UINT16 fulltag = REG_ConvertX87AbridgedTagToFull(&fpstate->fxsave_legacy);
+    *(UINT16 *)val = fulltag;
+    return;
+  }
+#endif
+  PIN_GetContextRegval(ctxt, (REG)regid, val);
+}
+
+//--------------------------------------------------------------------------
 static bool handle_read_regs(THREADID tid, int cls)
 {
   thread_data_t *tdata = thread_data_t::get_thread_data(tid);
@@ -2294,12 +2332,12 @@ static bool handle_read_regs(THREADID tid, int cls)
       for ( int j = 0; j < reg_class->count(); ++j )
       {
         pin_regid_t regid = pin_regid_t(reg_class->first() + j);
-        REG pin_regid = regidx_pintool2pin(regid);
+        PINTOOL_REG pin_regid = regidx_pintool2pin(regid);
         if ( pin_regid != REG_LAST )
         {
           PIN_REGISTER pinreg;
-          PIN_GetContextRegval(context, pin_regid, (UINT8 *)pinreg.byte);
-          int size = REG_Size(pin_regid);
+          get_context_reg(context, pin_regid, (UINT8 *)pinreg.byte);
+          int size = get_pinreg_size(pin_regid);
           if ( size < int(sizeof(ADDRINT)) )
             size = sizeof(ADDRINT);
           pin_value_t *vptr = reg_class->at(regid);
@@ -2310,7 +2348,7 @@ static bool handle_read_regs(THREADID tid, int cls)
           }
           else
             memcpy(vptr->v128, pinreg.byte, size);
-          DEBUG(2, "Get register %s/%d: %s\n", regname_by_idx(regid), REG_Size(pin_regid), hexval(vptr, size));
+          DEBUG(2, "Get register %s/%d: %s\n", regname_by_idx(regid), get_pinreg_size(pin_regid), hexval(vptr, size));
         }
       }
     }
@@ -2990,7 +3028,10 @@ inline void thread_data_t::save_ctx(const CONTEXT *src_ctx, bool can_change)
 //--------------------------------------------------------------------------
 inline void thread_data_t::save_ctx_nolock(const CONTEXT *src_ctx, bool can_change)
 {
-  DEBUG(3, "%d/%x: save thread context: ip=%p\n", ext_tid, ext_tid, (void*)get_ctx_ip(src_ctx));
+  DEBUG(2, "%d/%x: save thread context: ip=%p, can_change=%s\n",
+        ext_tid, ext_tid,
+        (void*)get_ctx_ip(src_ctx),
+        can_change ? "TRUE" : "FALSE");
   PIN_SaveContext(src_ctx, get_ctx());
   ctx_changed = false;
   ctx_valid = true;
@@ -3190,9 +3231,9 @@ inline void thread_data_t::save_phys_ctx(const PHYSICAL_CONTEXT *phys_ctx)
   {
     const UINT8 *v = (const UINT8 *)&fpstate.fxsave_legacy._xmms[i];
     pin_regid_t idx = pin_regid_t(PINREG_XMM0 + i);
-    REG regid = regidx_pintool2pin(idx);
+    PINTOOL_REG regid = regidx_pintool2pin(idx);
     DEBUG(2, "PHYS REG: %s = %s\n", regname_by_idx(idx), hexval(v, 16));
-    PIN_SetContextRegval(ctx, regid, v);
+    PIN_SetContextRegval(ctx, REG(regid), v);
   }
   ctx_changed = false;
   is_phys = true;
@@ -3213,31 +3254,47 @@ int thread_data_t::available_regs(int clsmask) const
 }
 
 //--------------------------------------------------------------------------
-inline bool thread_data_t::change_regval(REG regno, const UINT8 *regval)
+inline bool thread_data_t::change_regval(PINTOOL_REG regno, const UINT8 *regval)
 {
   if ( !can_change_regs || is_phys )
   {
-    MSG("Thread %d: can't change register values at this point\n", ext_tid);
+    MSG("Thread %d: can't change register values at this point: "
+        "is_phys=%s, can_change_regs=%s\n",
+        ext_tid,
+        is_phys ? "TRUE" : "FALSE",
+        can_change_regs ? "TRUE" : "FALSE");
     return false;
   }
   CONTEXT *context = get_ctx();
   PIN_REGISTER old_fpreg_value;
-  if ( REG_is_mm(regno) )
+  if ( REG_is_mm(REG(regno)) )
   {
     // PIN doesn't suport MMX modification, change corresponding ST reg
     regno = REG(regno - REG_MM_BASE + REG_ST_BASE);
-    if ( !REG_is_st(regno) )
+    if ( !REG_is_st(REG(regno)) )
       return false;
-    PIN_GetContextRegval(context, regno, (UINT8 *)old_fpreg_value.byte);
+    get_context_reg(context, regno, (UINT8 *)old_fpreg_value.byte);
     memcpy(old_fpreg_value.byte, regval, 8);    //-V512 underflow
     regval = old_fpreg_value.byte;
   }
+#ifdef NONSTD_FPTAG_FULL
+  // REG_FPTAG_FULL is not present in 3.19-98425 and higher, convert it
+  // to abridged 8-bit version
+  UINT8 abridged_tag[MAX_BYTES_PER_PIN_REG];
+  if ( regno == REG_FPTAG_FULL )
+  {
+    memset(abridged_tag, 0, sizeof(abridged_tag));
+    abridged_tag[0] = REG_ConvertX87FullTagToAbridged(*(UINT16*)regval);
+    regval = abridged_tag;
+    regno = REG_FPTAG;
+  }
+#endif
   PIN_REGISTER oldreg;
-  PIN_GetContextRegval(context, regno, (UINT8 *)oldreg.byte);
-  int size = REG_Size(regno);
+  get_context_reg(context, regno, (UINT8 *)oldreg.byte);
+  int size = get_pinreg_size(regno);
   if ( memcmp(regval, oldreg.byte, size) != 0 )
   {
-    PIN_SetContextRegval(context, regno, regval);
+    PIN_SetContextRegval(context, REG(regno), regval);
     ctx_changed = true;
   }
   return true;
@@ -4765,7 +4822,7 @@ inline void instrumenter_t::add_trace_intervals(int cnt, const mem_interval_t *i
 }
 
 //--------------------------------------------------------------------------
-inline REG regidx_pintool2pin(pin_regid_t pintool_reg)
+inline PINTOOL_REG regidx_pintool2pin(pin_regid_t pintool_reg)
 {
   switch ( pintool_reg )
   {
@@ -4978,10 +5035,10 @@ inline bool instrumenter_t::write_regs(pin_thid tid, int cnt, const pin_regval_t
   {
     const pin_regval_t &v = values[i];
     pin_regid_t idx = pin_regid_t(v.regidx);
-    REG pinreg = regidx_pintool2pin(idx);
+    PINTOOL_REG pinreg = regidx_pintool2pin(idx);
     if ( pinreg != REG_LAST )
     {
-      MSG("Write register %s: %s\n", regname_by_idx(idx), hexval((void *)v.regval, REG_Size(pinreg)));
+      MSG("Write register %s: %s\n", regname_by_idx(idx), hexval((void *)v.regval, get_pinreg_size(pinreg)));
       if ( !tdata->change_regval(pinreg, (const UINT8 *)v.regval) )
         return false;
     }

@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
       <Configuration>Debug</Configuration>
@@ -23,30 +23,30 @@
     <RootNamespace>MyPinTool</RootNamespace>
     <Keyword>Win32Proj</Keyword>
     <ProjectName>idadbg</ProjectName>
-    <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0.19041.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <CharacterSet>MultiByte</CharacterSet>
     <WholeProgramOptimization>true</WholeProgramOptimization>
-    <PlatformToolset>v140</PlatformToolset>
+    <PlatformToolset>v141</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <CharacterSet>MultiByte</CharacterSet>
-    <PlatformToolset>v140</PlatformToolset>
+    <PlatformToolset>v141</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <CharacterSet>MultiByte</CharacterSet>
     <WholeProgramOptimization>true</WholeProgramOptimization>
-    <PlatformToolset>v140</PlatformToolset>
+    <PlatformToolset>v141</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <CharacterSet>MultiByte</CharacterSet>
-    <PlatformToolset>v140</PlatformToolset>
+    <PlatformToolset>v141</PlatformToolset>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
@@ -95,7 +95,7 @@
       <AdditionalOptions>/EHs- /EHa- %(AdditionalOptions)</AdditionalOptions>
       <Optimization>Disabled</Optimization>
       <AdditionalIncludeDirectories>..\..\..\source\include\pin;..\..\..\source\include\pin\gen;..\..\..\extras/stlport/include;..\..\..\extras;..\..\..\extras\libstdc++\include;..\..\..\extras\crt\include;..\..\..\extras\crt;..\..\..\extras/crt/include/kernel/uapi;..\..\..\extras/crt/include/kernel/uapi/asm-x86;..\..\..\extras\components\include;..\..\..\source\tools\InstLib;..\..\..\extras\crt\include\arch-x86;..\..\..\extras\xed-ia32\include\xed;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>TARGET_IA32;HOST_IA32;TARGET_WINDOWS;BIGARRAY_MULTIPLIER=1;USING_XED;_CRT_SECURE_NO_DEPRECATE;_SECURE_SCL=0;WIN32;__PIN__=1;PIN_CRT=1;_WINDOWS_H_PATH_=$(WindowsSdkDir)\Include\um;</PreprocessorDefinitions>
+      <PreprocessorDefinitions>TARGET_IA32;HOST_IA32;TARGET_WINDOWS;BIGARRAY_MULTIPLIER=1;USING_XED;_CRT_SECURE_NO_DEPRECATE;_SECURE_SCL=0;WIN32;__PIN__=1;PIN_CRT=1;_WINDOWS_H_PATH_=$(WindowsSdkDir)\Include\$(WindowsTargetPlatformVersion)\um</PreprocessorDefinitions>
       <MinimalRebuild>false</MinimalRebuild>
       <ExceptionHandling>
       </ExceptionHandling>
@@ -115,7 +115,7 @@
     </ClCompile>
     <Link>
       <AdditionalOptions>/export:main %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalDependencies>../../..//ia32/runtime/pincrt/crtbeginS.obj;pin.lib;xed.lib;pinvm.lib;stlport-static.lib;m-static.lib;c-static.lib;os-apis.lib;ntdll-32.lib;kernel32.lib;ntdll-32.lib;kernel32.lib</AdditionalDependencies>
+      <AdditionalDependencies>../../..//ia32/runtime/pincrt/crtbeginS.obj;pin.lib;xed.lib;pincrt.lib;kernel32.lib</AdditionalDependencies>
       <AdditionalLibraryDirectories>../../../ia32/lib;../../../ia32/lib-ext;../../../ia32/runtime/pincrt;../../../extras/xed-ia32/lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
       <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
@@ -128,6 +128,8 @@
       <AllowIsolation>true</AllowIsolation>
       <AddModuleNamesToAssembly>%(AddModuleNamesToAssembly)</AddModuleNamesToAssembly>
       <ImageHasSafeExceptionHandlers>false</ImageHasSafeExceptionHandlers>
+      <ForceSymbolReferences>%(ForceSymbolReferences)</ForceSymbolReferences>
+      <ForceFileOutput>Enabled</ForceFileOutput>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -138,7 +140,7 @@
       <AdditionalOptions>/EHs- /EHa- %(AdditionalOptions)</AdditionalOptions>
       <Optimization>Disabled</Optimization>
       <AdditionalIncludeDirectories>..\..\..\source\include\pin;..\..\..\source\include\pin\gen;..\..\..\extras/stlport/include;..\..\..\extras;..\..\..\extras\libstdc++\include;..\..\..\extras\crt\include;..\..\..\extras\crt;..\..\..\extras/crt/include/kernel/uapi;..\..\..\extras/crt/include/kernel/uapi/asm-x86;..\..\..\extras\components\include;..\..\..\source\tools\InstLib;..\..\..\extras\crt\include\arch-x86_64;..\..\..\extras\xed-intel64\include\xed;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>TARGET_IA32E;HOST_IA32E;__LP64__;TARGET_WINDOWS;BIGARRAY_MULTIPLIER=1;USING_XED;_CRT_SECURE_NO_DEPRECATE;_SECURE_SCL=0;WIN32;__PIN__=1;PIN_CRT=1;_WINDOWS_H_PATH_=$(WindowsSdkDir)\Include\um</PreprocessorDefinitions>
+      <PreprocessorDefinitions>TARGET_IA32E;HOST_IA32E;__LP64__;TARGET_WINDOWS;BIGARRAY_MULTIPLIER=1;USING_XED;_CRT_SECURE_NO_DEPRECATE;_SECURE_SCL=0;WIN32;__PIN__=1;PIN_CRT=1;_WINDOWS_H_PATH_=$(WindowsSdkDir)\Include\$(WindowsTargetPlatformVersion)\um</PreprocessorDefinitions>
       <MinimalRebuild>false</MinimalRebuild>
       <ExceptionHandling>
       </ExceptionHandling>
@@ -157,7 +159,7 @@
     </ClCompile>
     <Link>
       <AdditionalOptions>/export:main %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalDependencies>../../../intel64/runtime/pincrt/crtbeginS.obj;pin.lib;xed.lib;pinvm.lib;stlport-static.lib;m-static.lib;c-static.lib;os-apis.lib;ntdll-64.lib;kernel32.lib</AdditionalDependencies>
+      <AdditionalDependencies>../../../intel64/runtime/pincrt/crtbeginS.obj;pin.lib;xed.lib;pincrt.lib;kernel32.lib</AdditionalDependencies>
       <AdditionalLibraryDirectories>../../../intel64/lib;../../../intel64/lib-ext;../../../intel64/runtime/pincrt;../../../extras/xed-intel64/lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
       <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
@@ -170,6 +172,7 @@
       <AllowIsolation>true</AllowIsolation>
       <AddModuleNamesToAssembly>%(AddModuleNamesToAssembly)</AddModuleNamesToAssembly>
       <ImageHasSafeExceptionHandlers>false</ImageHasSafeExceptionHandlers>
+      <ForceFileOutput>Enabled</ForceFileOutput>
     </Link>
     <CustomBuildStep>
       <Command>copy $(ProjectDir)\*.* c:\idasrc\current\dbg\common\pin\</Command>
@@ -181,7 +184,7 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <WholeProgramOptimization>false</WholeProgramOptimization>
       <AdditionalIncludeDirectories>..\..\..\source\include\pin;..\..\..\source\include\pin\gen;..\..\..\extras/stlport/include;..\..\..\extras;..\..\..\extras\libstdc++\include;..\..\..\extras\crt\include;..\..\..\extras\crt;..\..\..\extras/crt/include/kernel/uapi;..\..\..\extras/crt/include/kernel/uapi/asm-x86;..\..\..\extras\components\include;..\..\..\source\tools\InstLib;..\..\..\extras\crt\include\arch-x86;..\..\..\extras\xed-ia32\include\xed;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>TARGET_IA32;HOST_IA32;TARGET_WINDOWS;BIGARRAY_MULTIPLIER=1;USING_XED;_CRT_SECURE_NO_DEPRECATE;_SECURE_SCL=0;WIN32;__PIN__=1;PIN_CRT=1;_WINDOWS_H_PATH_=$(WindowsSdkDir)\Include\um;</PreprocessorDefinitions>
+      <PreprocessorDefinitions>TARGET_IA32;HOST_IA32;TARGET_WINDOWS;BIGARRAY_MULTIPLIER=1;USING_XED;_CRT_SECURE_NO_DEPRECATE;_SECURE_SCL=0;WIN32;__PIN__=1;PIN_CRT=1;_WINDOWS_H_PATH_=$(WindowsSdkDir)\Include\$(WindowsTargetPlatformVersion)\um</PreprocessorDefinitions>
       <MinimalRebuild>false</MinimalRebuild>
       <ExceptionHandling>
       </ExceptionHandling>
@@ -202,7 +205,7 @@
     </ClCompile>
     <Link>
       <AdditionalOptions>/export:main %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalDependencies>../../..//ia32/runtime/pincrt/crtbeginS.obj;pin.lib;xed.lib;pinvm.lib;stlport-static.lib;m-static.lib;c-static.lib;os-apis.lib;ntdll-32.lib;kernel32.lib;kernel32.lib</AdditionalDependencies>
+      <AdditionalDependencies>../../..//ia32/runtime/pincrt/crtbeginS.obj;pin.lib;xed.lib;pincrt.lib;kernel32.lib;kernel32.lib</AdditionalDependencies>
       <AdditionalLibraryDirectories>../../../ia32/lib;../../../ia32/lib-ext;../../../ia32/runtime/pincrt;../../../extras/xed-ia32/lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
       <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
@@ -218,6 +221,8 @@
       <TargetMachine>MachineX86</TargetMachine>
       <AddModuleNamesToAssembly>%(AddModuleNamesToAssembly)</AddModuleNamesToAssembly>
       <ImageHasSafeExceptionHandlers>false</ImageHasSafeExceptionHandlers>
+      <ForceSymbolReferences>%(ForceSymbolReferences)</ForceSymbolReferences>
+      <ForceFileOutput>Enabled</ForceFileOutput>
     </Link>
     <PostBuildEvent>
       <Command>copy $(ProjectDir)$(Configuration)\$(ProjectName).dll $(ProjectDir)</Command>
@@ -232,7 +237,7 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <WholeProgramOptimization>false</WholeProgramOptimization>
       <AdditionalIncludeDirectories>..\..\..\source\include\pin;..\..\..\source\include\pin\gen;..\..\..\extras/stlport/include;..\..\..\extras;..\..\..\extras\libstdc++\include;..\..\..\extras\crt\include;..\..\..\extras\crt;..\..\..\extras/crt/include/kernel/uapi;..\..\..\extras/crt/include/kernel/uapi/asm-x86;..\..\..\extras\components\include;..\..\..\source\tools\InstLib;..\..\..\extras\crt\include\arch-x86_64;..\..\..\extras\xed-intel64\include\xed;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>TARGET_IA32E;HOST_IA32E;__LP64__;TARGET_WINDOWS;BIGARRAY_MULTIPLIER=1;USING_XED;_CRT_SECURE_NO_DEPRECATE;_SECURE_SCL=0;WIN32;__PIN__=1;PIN_CRT=1;_WINDOWS_H_PATH_=$(WindowsSdkDir)\Include\um</PreprocessorDefinitions>
+      <PreprocessorDefinitions>TARGET_IA32E;HOST_IA32E;__LP64__;TARGET_WINDOWS;BIGARRAY_MULTIPLIER=1;USING_XED;_CRT_SECURE_NO_DEPRECATE;_SECURE_SCL=0;WIN32;__PIN__=1;PIN_CRT=1;_WINDOWS_H_PATH_=$(WindowsSdkDir)\Include\$(WindowsTargetPlatformVersion)\um</PreprocessorDefinitions>
       <MinimalRebuild>false</MinimalRebuild>
       <ExceptionHandling>
       </ExceptionHandling>
@@ -252,7 +257,7 @@
     </ClCompile>
     <Link>
       <AdditionalOptions>/export:main %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalDependencies>../../../intel64/runtime/pincrt/crtbeginS.obj;pin.lib;xed.lib;pinvm.lib;stlport-static.lib;m-static.lib;c-static.lib;os-apis.lib;ntdll-64.lib;kernel32.lib</AdditionalDependencies>
+      <AdditionalDependencies>../../../intel64/runtime/pincrt/crtbeginS.obj;pin.lib;xed.lib;pincrt.lib;kernel32.lib</AdditionalDependencies>
       <AdditionalLibraryDirectories>../../../intel64/lib;../../../intel64/lib-ext;../../../intel64/runtime/pincrt;../../../extras/xed-intel64/lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
       <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
@@ -268,6 +273,7 @@
       <TargetMachine>MachineX64</TargetMachine>
       <AddModuleNamesToAssembly>%(AddModuleNamesToAssembly)</AddModuleNamesToAssembly>
       <ImageHasSafeExceptionHandlers>false</ImageHasSafeExceptionHandlers>
+      <ForceFileOutput>Enabled</ForceFileOutput>
     </Link>
     <PostBuildEvent>
       <Command>copy $(ProjectDir)$(Platform)\$(Configuration)\$(ProjectName).dll $(ProjectDir)\$(ProjectName)64.dll</Command>
