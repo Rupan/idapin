@@ -273,14 +273,14 @@ public:
   }
   ~janitor_for_pinlock_t()
   {
-    if ( resource != NULL )
+    if ( resource != nullptr )
       release();
   }
   //lint -sem(janitor_for_pinlock_t::release,cleanup)
   void release()
   {
     PIN_ReleaseLock(resource);
-    resource = NULL;
+    resource = nullptr;
   }
 };
 

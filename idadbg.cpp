@@ -1,8 +1,8 @@
 /*
 
     IDA trace: PIN tool to communicate with IDA's debugger
-    Last supported linux version:   3.19-98425
-    Last supported windows version: 3.18-98332
+    Last supported linux version:   3.23-98579
+    Last supported windows version: 3.23-98579
 
 */
 
@@ -138,7 +138,7 @@ static PIN_LOCK listener_ready_lock;
 //--------------------------------------------------------------------------
 // Handle IDA requests
 static bool handle_packets(int total, pin_event_id_t until_ev = NO_EVENT);
-static bool read_handle_packet(idapin_packet_t *res = NULL);
+static bool read_handle_packet(idapin_packet_t *res = nullptr);
 static bool handle_packet(const idapin_packet_t *res);
 //lint -esym(551, last_packet) not accessed
 static const char *last_packet = "NONE";      // for debug purposes
@@ -159,8 +159,30 @@ typedef int PINTOOL_REG;
 #else
 typedef REG PINTOOL_REG;
 #endif
+
+static int get_pinreg_size(PINTOOL_REG regid);
 static PINTOOL_REG regidx_pintool2pin(pin_regid_t pintool_reg);
 inline const char *regname_by_idx(pin_regid_t pintool_reg);
+
+struct PINTOOL_REGISTER
+{
+  UINT8 *byte = nullptr;
+  UINT8 buf[256];
+
+  PINTOOL_REGISTER(PINTOOL_REG regno)
+  {
+    int size = get_pinreg_size(regno);
+    int bufsize = sizeof(buf);
+    // dynamically allocate memory if the size exceeds sizeof(buf)
+    byte = size <= bufsize ? buf : (UINT8 *)malloc(size);
+  }
+  ~PINTOOL_REGISTER()
+  {
+    if ( byte != buf )
+      free(byte);
+    byte = nullptr;
+  }
+};
 
 //--------------------------------------------------------------------------
 // application process state
@@ -231,7 +253,7 @@ public:
   bool is_started() const              { return started; }
   inline void set_started();
   inline void set_finished() const;
-  bool ctx_ok() const                  { return ctx != NULL; }
+  bool ctx_ok() const                  { return ctx != nullptr; }
   CONTEXT *get_ctx()                   { create_ctx(); return ctx; }  //lint !e1535 !e1536 exposes lower access member
   bool is_phys_ctx() const             { return is_phys; }
   bool is_ctx_changed() const          { return ctx_changed; }
@@ -729,7 +751,7 @@ inline const char *tail(const char *in_str) { return strchr(in_str, '\0'); }
 //--------------------------------------------------------------------------
 inline ADDRINT get_ctx_ip(const CONTEXT *ctx)
 {
-  return ctx == NULL ? BADADDR : (ADDRINT)PIN_GetContextReg(ctx, REG_INST_PTR);
+  return ctx == nullptr ? BADADDR : (ADDRINT)PIN_GetContextReg(ctx, REG_INST_PTR);
 }
 
 //--------------------------------------------------------------------------
@@ -825,7 +847,7 @@ inline bool pop_debug_event(pin_local_event_t *out_ev, bool *can_resume)
   else if ( out_ev->debev.eid != NO_EVENT )
   {
     thread_data_t *td = thread_data_t::get_any_stopped_thread(&out_ev->tid_local);
-    if ( td == NULL )
+    if ( td == nullptr )
     {
       MSG("PINtool error: undefined event TID and no stopped thread found\n");
     }
@@ -895,7 +917,7 @@ inline bool suspend_at_event(pin_local_event_t &ev, bool use_sem)
 //--------------------------------------------------------------------------
 inline bool wait_for_thread_termination(PIN_THREAD_UID tuid)
 {
-  return PIN_WaitForThreadTermination(tuid, 10000, NULL);
+  return PIN_WaitForThreadTermination(tuid, 10000, nullptr);
 }
 
 //--------------------------------------------------------------------------
@@ -978,12 +1000,12 @@ static VOID prepare_fini_cb(VOID *)
 //--------------------------------------------------------------------------
 const char *pin_basename(const char *path)
 {
-  if ( path != NULL )
+  if ( path != nullptr )
   {
     const char *f1 = strrchr(path, '/');
     const char *f2 = strrchr(path, '\\');
     const char *file = max(f1, f2);
-    if ( file != NULL )
+    if ( file != nullptr )
       return file+1;
   }
   return path;
@@ -1211,11 +1233,11 @@ inline bool pin_sockwait(int milisec)
   FD_ZERO(&rdset);
   FD_SET(cli_socket, &rdset);
 #ifdef _WIN32
-  return pin_select(cli_socket+1, &rdset, NULL, NULL, &tv) > 0;
+  return pin_select(cli_socket+1, &rdset, nullptr, nullptr, &tv) > 0;
 #else
   int res;
   do
-    res = pin_select(cli_socket+1, &rdset, NULL, NULL, &tv);
+    res = pin_select(cli_socket+1, &rdset, nullptr, nullptr, &tv);
   while ( res == -1 && errno == EINTR );
   return res > 0;
 #endif
@@ -1351,7 +1373,7 @@ static bool init_socket(void)
   // implemented in PinCRT like Linux sockets), now load library ws2_32.dll manualy
 #ifdef _WIN32
   WINDOWS::HMODULE h = WINDOWS::LoadLibrary(TEXT("ws2_32.dll"));
-  if ( h == NULL )
+  if ( h == nullptr )
   {
     error_msg("Load ws2_32.dll");
     return false;
@@ -1370,19 +1392,19 @@ static bool init_socket(void)
   *(WINDOWS::FARPROC*)&p_htons = GetProcAddress(h, TEXT("htons"));
   *(WINDOWS::FARPROC*)&p__WSAFDIsSet = GetProcAddress(h, TEXT("__WSAFDIsSet"));
 
-  if ( p_WSAStartup == NULL
-    || p_WSAGetLastError == NULL
-    || p_socket == NULL
-    || p_bind == NULL
-    || p_setsockopt == NULL
-    || p_listen == NULL
-    || p_accept == NULL
-    || p_recv == NULL
-    || p_send == NULL
-    || p_select == NULL
-    || p_closesocket == NULL
-    || p_htons == NULL
-    || p__WSAFDIsSet == NULL )
+  if ( p_WSAStartup == nullptr
+    || p_WSAGetLastError == nullptr
+    || p_socket == nullptr
+    || p_bind == nullptr
+    || p_setsockopt == nullptr
+    || p_listen == nullptr
+    || p_accept == nullptr
+    || p_recv == nullptr
+    || p_send == nullptr
+    || p_select == nullptr
+    || p_closesocket == nullptr
+    || p_htons == nullptr
+    || p__WSAFDIsSet == nullptr )
   {
     error_msg("Get socket proc");
     return false;
@@ -1446,7 +1468,7 @@ static bool init_socket(void)
       tv.tv_usec = 0;
       FD_ZERO(&read_descs);
       FD_SET(srv_socket, &read_descs);
-      if ( pin_select(srv_socket + 1, &read_descs, NULL, NULL, &tv) == -1 )
+      if ( pin_select(srv_socket + 1, &read_descs, nullptr, nullptr, &tv) == -1 )
       {
         error_msg("select");
         return false;
@@ -1542,7 +1564,7 @@ static VOID context_change_cb(
   pin_debug_event_t &event = ev.debev;
   event.exc.code = sig;
   thread_data_t *tdata = thread_data_t::get_thread_data(tid);
-  if ( ctxt_from != NULL )
+  if ( ctxt_from != nullptr )
   {
     tdata->save_ctx(ctxt_from, false);
     event.ea = get_ctx_ip(ctxt_from);
@@ -1801,7 +1823,7 @@ static void handle_start_process(void)
   PIN_AddInternalExceptionHandler(internal_excp_cb, 0);
 
   // Create the thread for communicating with IDA
-  THREADID thread_id = PIN_SpawnInternalThread(ida_pin_listener, NULL, 0, &listener_uid);
+  THREADID thread_id = PIN_SpawnInternalThread(ida_pin_listener, nullptr, 0, &listener_uid);
   if ( thread_id == INVALID_THREADID )
   {
     MSG("PIN_SpawnInternalThread(listener) failed\n");
@@ -1984,7 +2006,7 @@ static void get_os_segments(pin_meminfo_vec_t &miv)
 //--------------------------------------------------------------------------
 const char *skip_spaces(const char *ptr)
 {
-  if ( ptr != NULL )
+  if ( ptr != nullptr )
   {
     while ( isspace(*ptr) )
       ptr++;
@@ -2045,7 +2067,7 @@ static bool read_mapping(FILE *mapfp, mapfp_entry_t *me)
 static void get_os_segments(pin_meminfo_vec_t &miv)
 {
   FILE *mapfp = fopen("/proc/self/maps", "rb");
-  if ( mapfp == NULL )
+  if ( mapfp == nullptr )
   {
     error_msg("ERROR: could not open /proc/self/maps");
     return;
@@ -2071,9 +2093,9 @@ static void get_os_segments(pin_meminfo_vec_t &miv)
       PIN_STR_TO_BUF(mi.name, me.fname);
       mi.bitness = BITNESS;
 
-      if ( strchr(me.perm, 'r') != NULL ) mi.perm |= SEGPERM_READ;
-      if ( strchr(me.perm, 'w') != NULL ) mi.perm |= SEGPERM_WRITE;
-      if ( strchr(me.perm, 'x') != NULL ) mi.perm |= SEGPERM_EXEC;
+      if ( strchr(me.perm, 'r') != nullptr ) mi.perm |= SEGPERM_READ;
+      if ( strchr(me.perm, 'w') != nullptr ) mi.perm |= SEGPERM_WRITE;
+      if ( strchr(me.perm, 'x') != nullptr ) mi.perm |= SEGPERM_EXEC;
 
       add_segment(&miv, mi);
     }
@@ -2163,11 +2185,11 @@ static bool handle_memory_info(void)
 static char *get_io_buff(size_t size)
 {
   static size_t curr_size = 0;
-  static char *packet_io_buf = NULL;
+  static char *packet_io_buf = nullptr;
   if ( size > curr_size )
   {
     void *p = realloc(packet_io_buf, size);
-    if ( p == NULL )
+    if ( p == nullptr )
       free(packet_io_buf);
     packet_io_buf = (char *)p;
     curr_size = size;
@@ -2266,7 +2288,7 @@ static bool handle_read_trace(void)
 }
 
 //--------------------------------------------------------------------------
-int get_pinreg_size(PINTOOL_REG regid)
+static int get_pinreg_size(PINTOOL_REG regid)
 {
 #ifdef NONSTD_FPTAG_FULL
   if ( regid == REG_FPTAG_FULL )
@@ -2323,9 +2345,9 @@ static bool handle_read_regs(THREADID tid, int cls)
     for ( int i = 0; i < regbuf.nclasses(); ++i )
     {
       pin_classregs_t *reg_class = regbuf.get_class(i);
-      if ( reg_class == NULL )
+      if ( reg_class == nullptr )
       {
-        MSG("Internal error at %d: unexpected NULL value\n", __LINE__);
+        MSG("Internal error at %d: unexpected nullptr value\n", __LINE__);
         return false;
       }
       DEBUG(2, "Thread %d/%d: Get registers (class=%s/%02x)\n", tdata->get_ext_tid(), tid, regclass_name(regbuf.get_classid(i)), regbuf.get_classid(i));
@@ -2335,7 +2357,7 @@ static bool handle_read_regs(THREADID tid, int cls)
         PINTOOL_REG pin_regid = regidx_pintool2pin(regid);
         if ( pin_regid != REG_LAST )
         {
-          PIN_REGISTER pinreg;
+          PINTOOL_REGISTER pinreg(pin_regid);
           get_context_reg(context, pin_regid, (UINT8 *)pinreg.byte);
           int size = get_pinreg_size(pin_regid);
           if ( size < int(sizeof(ADDRINT)) )
@@ -2362,7 +2384,7 @@ static bool handle_read_regs(THREADID tid, int cls)
 static bool get_segbase(ADDRINT *base, THREADID tid_local, ADDRINT segval)
 {
   thread_data_t *tdata = thread_data_t::find_thread_data(tid_local);
-  if ( tdata == NULL )
+  if ( tdata == nullptr )
     return false;
 
   CONTEXT *ctx = tdata->get_ctx();
@@ -2372,7 +2394,7 @@ static bool get_segbase(ADDRINT *base, THREADID tid_local, ADDRINT segval)
   if ( segval == gs )
   {
     *base = PIN_GetContextReg(ctx, REG_SEG_GS_BASE);
-    // try FS if GS gave NULL base and both FS and GS have the same value
+    // try FS if GS gave nullptr base and both FS and GS have the same value
     if ( *base != 0 || segval != fs )
       return true;
   }
@@ -2471,7 +2493,7 @@ static bool do_resume(idapin_packet_t *ans, const idapin_packet_t &request)
     {
       // examine request.size field: should exception be passed to application?
       thread_data_t *tdata = thread_data_t::find_thread_data(tid_local);
-      if ( tdata != NULL )
+      if ( tdata != nullptr )
         tdata->set_excp_handled(request.size != 0);
       else
         MSG("RESUME error: can't find thread data for %d\n", tid_local);
@@ -2571,7 +2593,7 @@ static bool handle_packet(const idapin_packet_t *res)
       if ( pin_client_version < 6 )
       {
         pin_local_event_t evt;
-        if ( !pop_debug_event(&evt, NULL) )
+        if ( !pop_debug_event(&evt, nullptr) )
           evt.debev.eid = NO_EVENT;
         if ( evt.debev.eid != NO_EVENT )
           DEBUG(2, "Send event: %x (%d, %p)\n",
@@ -2646,7 +2668,7 @@ static bool handle_packet(const idapin_packet_t *res)
         THREADID tid_local = get_thread_from_packet(*res);
         thread_data_t *tdata = thread_data_t::find_thread_data(tid_local);
         int cls = res->size;
-        ans.data = tdata == NULL ? 0 : tdata->available_regs(cls);
+        ans.data = tdata == nullptr ? 0 : tdata->available_regs(cls);
         ans.code = ans.data != 0 ? PTT_ACK : PTT_ERROR;
         ret = pin_send(&ans, sizeof(idapin_packet_t), __FUNCTION__);
       }
@@ -2688,7 +2710,7 @@ static bool handle_packet(const idapin_packet_t *res)
         { // get trace intervals (res->size contains number of intervals)
           ssize_t psize = res->size * sizeof(mem_interval_t);
           mem_interval_t *ivs = (mem_interval_t *)get_io_buff(psize);
-          if ( ivs != NULL
+          if ( ivs != nullptr
             && pin_recv(cli_socket, ivs, psize, "trace_intervals") == psize )
           {
             instrumenter_t::add_trace_intervals(res->size, ivs);
@@ -2721,7 +2743,7 @@ static bool handle_packet(const idapin_packet_t *res)
       {
         THREADID tid = get_thread_from_packet(*res);
         thread_data_t *tdata = thread_data_t::find_thread_data(tid);
-        if ( tdata == NULL )
+        if ( tdata == nullptr )
         {
           ans.code = PTT_ERROR;
           ret = false;
@@ -2739,7 +2761,7 @@ static bool handle_packet(const idapin_packet_t *res)
       {
         THREADID tid = get_thread_from_packet(*res);
         thread_data_t *tdata = thread_data_t::find_thread_data(tid);
-        if ( tdata == NULL )
+        if ( tdata == nullptr )
         {
           ans.code = PTT_ERROR;
           ret = false;
@@ -2778,14 +2800,14 @@ static bool handle_packet(const idapin_packet_t *res)
 static bool read_handle_packet(idapin_packet_t *res)
 {
   idapin_packet_t ipack;
-  if ( res == NULL )
+  if ( res == nullptr )
     res = &ipack;
   DEBUG(4, "Receiving packet, expected %d bytes...\n",(uint32)sizeof(*res));
 
   if ( events.can_send_event() )
   {
     // every 10ms try to send event
-    while ( !events.send_event(NULL) )
+    while ( !events.send_event(nullptr) )
     {
       if ( listener_uid == PIN_ThreadUid() && PIN_IsProcessExiting() )
         return false;
@@ -2884,11 +2906,11 @@ static void open_console(void)
     // so do not call freopen() for in case of 32bit here because it looks like
     // the console output works even better without these calls
 #if defined(PIN_64)
-    if ( freopen("CONIN$", "rb", stdin) == NULL )
+    if ( freopen("CONIN$", "rb", stdin) == nullptr )
       error_msg("CONIN");
-    if ( freopen("CONOUT$", "wb", stdout) == NULL )
+    if ( freopen("CONOUT$", "wb", stdout) == nullptr )
       error_msg("CONOUT");
-    if ( freopen("CONOUT$", "wb", stderr) == NULL )
+    if ( freopen("CONOUT$", "wb", stderr) == nullptr )
       error_msg("stderr -> CONOUT$");
 #endif
     std::ios::sync_with_stdio();
@@ -2918,7 +2940,7 @@ int main(int argc, char * argv[])
   if ( value <= 0 )
   {
     const char *envval = getenv("IDAPIN_DEBUG");
-    if ( envval != NULL )
+    if ( envval != nullptr )
       value = atoi(envval);
   }
   if ( value > 0 )
@@ -2953,7 +2975,7 @@ PIN_LOCK thread_data_t::meminfo_lock;
 //--------------------------------------------------------------------------
 // thr_data_lock should be acquired by the caller
 inline thread_data_t::thread_data_t()
-  : ctx(NULL), restarted_at(BADADDR),
+  : ctx(nullptr), restarted_at(BADADDR),
     ext_tid(NO_THREAD), state_bits(0),
     ctx_valid(false), ctx_changed(false), can_change_regs(false), susp(false),
     ev_handled(false), started(false), is_phys(false), is_stoppable(false)
@@ -2962,9 +2984,9 @@ inline thread_data_t::thread_data_t()
   PIN_SemaphoreSet(&thr_sem);
   PIN_InitLock(&ctx_lock);
 #ifdef _WIN32
-  tibbase = NULL;
-  nt_tib.StackBase = NULL;
-  nt_tib.StackLimit = NULL;
+  tibbase = nullptr;
+  nt_tib.StackBase = nullptr;
+  nt_tib.StackLimit = nullptr;
 #endif
   ++thread_cnt;
   DEBUG(2, "Thread data created (#threads=%d)\n", thread_cnt);
@@ -2977,7 +2999,7 @@ inline thread_data_t::~thread_data_t()
   delete ctx;
   local_tids.erase(ext_tid);
 #ifdef _WIN32
-  tibbase = NULL;
+  tibbase = nullptr;
 #endif
   --thread_cnt;
   DEBUG(2, "Thread data deleted (#threads=%d)\n", thread_cnt);
@@ -3056,9 +3078,9 @@ inline bool thread_data_t::save_curr_thread_ctx(const CONTEXT *src_ctx)
   ADDRINT curr_sp = PIN_GetContextReg(ctx, REG_STACK_PTR);
   if ( curr_sp > stack_top() || curr_sp < stack_bottom() )
   { // no valid stack limits, try to refresh
-    nt_tib.StackBase = NULL;
-    nt_tib.StackLimit = NULL;
-    if ( tibbase == NULL )
+    nt_tib.StackBase = nullptr;
+    nt_tib.StackLimit = nullptr;
+    if ( tibbase == nullptr )
       tibbase = WINDOWS::NtCurrentTeb();
 
     size_t read_bytes = PIN_SafeCopy(&nt_tib, tibbase, sizeof(nt_tib));
@@ -3266,7 +3288,7 @@ inline bool thread_data_t::change_regval(PINTOOL_REG regno, const UINT8 *regval)
     return false;
   }
   CONTEXT *context = get_ctx();
-  PIN_REGISTER old_fpreg_value;
+  PINTOOL_REGISTER old_fpreg_value(REG_ST0);
   if ( REG_is_mm(REG(regno)) )
   {
     // PIN doesn't suport MMX modification, change corresponding ST reg
@@ -3280,7 +3302,7 @@ inline bool thread_data_t::change_regval(PINTOOL_REG regno, const UINT8 *regval)
 #ifdef NONSTD_FPTAG_FULL
   // REG_FPTAG_FULL is not present in 3.19-98425 and higher, convert it
   // to abridged 8-bit version
-  UINT8 abridged_tag[MAX_BYTES_PER_PIN_REG];
+  UINT8 abridged_tag[64];
   if ( regno == REG_FPTAG_FULL )
   {
     memset(abridged_tag, 0, sizeof(abridged_tag));
@@ -3289,7 +3311,7 @@ inline bool thread_data_t::change_regval(PINTOOL_REG regno, const UINT8 *regval)
     regno = REG_FPTAG;
   }
 #endif
-  PIN_REGISTER oldreg;
+  PINTOOL_REGISTER oldreg(regno);
   get_context_reg(context, regno, (UINT8 *)oldreg.byte);
   int size = get_pinreg_size(regno);
   if ( memcmp(regval, oldreg.byte, size) != 0 )
@@ -3391,7 +3413,7 @@ thread_data_t *thread_data_t::find_thread_data(THREADID tid, bool create)
   else
   {
     if ( !create )
-      return NULL;
+      return nullptr;
     MSG("Created thread data (%d)\n", tid);
     tdata = new thread_data_t;
     thr_data[tid] = tdata;
@@ -3413,7 +3435,7 @@ inline thread_data_t *thread_data_t::get_any_stopped_thread(THREADID *tid)
       return p->second;
     }
   }
-  return NULL;
+  return nullptr;
 }
 
 //--------------------------------------------------------------------------
@@ -3468,7 +3490,7 @@ inline void thread_data_t::set_ext_tid(THREADID local_tid, pin_thid tid)
 inline pin_thid thread_data_t::get_ext_thread_id(THREADID local_tid)
 {
   thread_data_t *tdata = find_thread_data(local_tid);
-  return tdata == NULL ? NO_THREAD : tdata->ext_tid;
+  return tdata == nullptr ? NO_THREAD : tdata->ext_tid;
 }
 
 //--------------------------------------------------------------------------
@@ -3761,10 +3783,10 @@ inline char *ev_queue_t::export_symbols(int *bufsize)
 {
   janitor_for_pinlock_t ql_guard(&lock);
   char *buf = (char *)malloc(sym_size);
-  if ( buf == NULL )
+  if ( buf == nullptr )
   {
     *bufsize = 0;
-    return NULL;
+    return nullptr;
   }
   char *ptr = buf;
   for ( size_t i = 0; i < symbols.size(); ++i )
@@ -4183,7 +4205,7 @@ bool instrumenter_t::init()
   // so create a separate thread for that
   PIN_SemaphoreInit(&reinstr_sem);
   sema_clear(&reinstr_sem);
-  THREADID tid = PIN_SpawnInternalThread(reinstrumenter, NULL, 0, &reinstr_uid);
+  THREADID tid = PIN_SpawnInternalThread(reinstrumenter, nullptr, 0, &reinstr_uid);
   if ( tid == INVALID_THREADID )
   {
     MSG("PIN_SpawnInternalThread(RemoveInstrumentation thread) failed\n");
@@ -4570,7 +4592,7 @@ inline void instrumenter_t::add_to_trace(ADDRINT ea, pin_tev_type_t tev_type)
 {
   DEBUG(3, "add_to_trace2: Adding instruction at %p\n", pvoid(ea));
 
-  store_trace_entry(NULL, ea, tev_type);
+  store_trace_entry(nullptr, ea, tev_type);
 }
 
 //--------------------------------------------------------------------------
@@ -4586,7 +4608,7 @@ inline void instrumenter_t::store_trace_entry(
     prepare_and_wait_trace_flush();
 
   trc_element_t trc(PIN_GetTid(), ea, tev_type);
-  if ( instrumenter_t::tracing_registers && ctx != NULL )
+  if ( instrumenter_t::tracing_registers && ctx != nullptr )
     get_context_regs(ctx, &trc.regs);
 
   janitor_for_pinlock_t plj(&tracebuf_lock);
@@ -5029,7 +5051,7 @@ inline bool instrumenter_t::write_regs(pin_thid tid, int cnt, const pin_regval_t
 {
   THREADID local_tid = thread_data_t::get_local_thread_id(tid);
   thread_data_t *tdata = thread_data_t::find_thread_data(local_tid);
-  if ( tdata == NULL )
+  if ( tdata == nullptr )
     return false;
   for ( int i = 0; i < cnt; ++i )
   {
@@ -5199,7 +5221,7 @@ void suspender_t::thread_worker()
         DEBUG(3, "Suspender: after PIN_StopApplicationThreads %d\n", state);
         int t_count = PIN_GetStoppedThreadCount();
         DEBUG(2, "Suspender: %d application threads stopped\n", t_count);
-        contexts.resize(t_count, NULL);
+        contexts.resize(t_count, nullptr);
         janitor_for_pinlock_t process_state_guard(&process_state_lock);
         janitor_for_pinlock_t susp_lock_guard(&lock);
         if ( thr_age != curr_thr_age )
@@ -5220,10 +5242,10 @@ void suspender_t::thread_worker()
           {
             DEBUG(2, "Suspender: read context for thread %d\n", tid);
             CONTEXT *ctx = PIN_GetStoppedThreadWriteableContext(tid);
-            if ( ctx != NULL )
+            if ( ctx != nullptr )
             {
               thread_data_t *tdata = thread_data_t::find_thread_data(tid);
-              if ( tdata != NULL )
+              if ( tdata != nullptr )
               {
                 tdata->save_ctx(ctx);
                 contexts[i] = ctx;
@@ -5275,13 +5297,13 @@ void suspender_t::thread_worker()
         // modify changed contexts
         for ( int i = 0; i < t_count; ++i )
         {
-          if ( contexts[i] != NULL )
+          if ( contexts[i] != nullptr )
           {
             THREADID tid = PIN_GetStoppedThreadId(i);
             if ( tid != INVALID_THREADID )
             {
               thread_data_t *tdata = thread_data_t::find_thread_data(tid);
-              if ( tdata != NULL && tdata->is_ctx_changed() )
+              if ( tdata != nullptr && tdata->is_ctx_changed() )
               {
                 DEBUG(2, "%d: registers changed: modify thread context\n", tid);
                 PIN_SaveContext(tdata->get_ctx(), contexts[i]);
@@ -5359,7 +5381,7 @@ void suspender_t::copy_pending_events_nolock(THREADID curr_tid)
     if ( ev.tid_local == INVALID_THREADID )
       ev.tid_local = curr_tid;
     thread_data_t *td = thread_data_t::find_thread_data(ev.tid_local);
-    if ( td != NULL )
+    if ( td != nullptr )
     {
       ADDRINT ea = get_ctx_ip(td->get_ctx());
       if ( ADDRINT(ev.debev.ea) == ADDRINT(BADADDR) )
