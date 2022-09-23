@@ -102,7 +102,7 @@ typedef WINDOWS::SOCKET SOCKET;
 #define pin_setsockopt  setsockopt
 #define pin_sockaddr_in sockaddr_in
 #define pin_htons       htons
-#define pin_bind        bind
+#define pin_bind        ::bind
 #define pin_listen      listen
 #define pin_sockaddr    sockaddr
 #define pin_socklen_t   socklen_t
