@@ -687,7 +687,7 @@ inline bool pin_classregs_t::init(pin_regid_t firstnum, pin_regid_t lastnum)
   size_t s1 = max_regsize(firstnum);
   size_t s2 = max_regsize(lastnum);
   valsize = s1 > s2 ? s1 : s2;
-  pvals = NULL;
+  pvals = nullptr;
   return true;
 }
 
@@ -745,8 +745,8 @@ inline void pin_regbuf_t::setbuf(char *buf)
 //--------------------------------------------------------------------------
 inline const pin_value_t *pin_classregs_t::at(pin_regid_t regno) const
 {
-  if ( pvals == NULL )
-    return NULL;
+  if ( pvals == nullptr )
+    return nullptr;
   switch ( valsize )
   {
     case 32:
@@ -761,8 +761,8 @@ inline const pin_value_t *pin_classregs_t::at(pin_regid_t regno) const
 //--------------------------------------------------------------------------
 inline pin_value_t *pin_classregs_t::at(pin_regid_t regno)
 {
-  if ( pvals == NULL )
-    return NULL;
+  if ( pvals == nullptr )
+    return nullptr;
   switch ( valsize )
   {
     case 32:
