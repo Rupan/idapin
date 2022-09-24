@@ -829,7 +829,7 @@ struct pin_symdef_t
   const unsigned char *name() const      { return buf() + sizeof(uint64); }
   unsigned char *name()                  { return buf() + sizeof(uint64); }
   // PIN's stlport does not have data()
-#if defined(IDA_SDK_VERSION) || PIN_BUILD_NUMBER >= 76991
+#if defined(IDA_SDK_VERSION) || (PIN_BUILD_NUMBER >= 76991 && defined(TARGET_WINDOWS))
   const unsigned char *buf() const       { return array.begin(); }
   unsigned char *buf()                   { return array.begin(); }
 #else
