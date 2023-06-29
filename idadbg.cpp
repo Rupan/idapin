@@ -1,8 +1,8 @@
 /*
 
     IDA trace: PIN tool to communicate with IDA's debugger
-    Last supported linux version:   3.23-98579
-    Last supported windows version: 3.23-98579
+    Last supported linux version:   3.27-98718
+    Last supported windows version: 3.24-98612
 
 */
 
@@ -1302,10 +1302,10 @@ static bool accept_conn()
     return false;
   }
   pin_client_version = req_v1.size;
-  if ( pin_client_version == 1 )
+  if ( pin_client_version < 9 )
   {
     // version 1 (incompatible) client - send v1 packet answer and exit
-    MSG("Incompatible client (version 1) - disconnect\n");
+    MSG("Incompatible client version %d (9 or higher is expected) - disconnect\n", pin_client_version);
     req_v1.size = PIN_PROTOCOL_VERSION;
     req_v1.data = sizeof(ADDRINT);
     req_v1.code = PTT_ACK;

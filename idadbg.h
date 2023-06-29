@@ -9,8 +9,6 @@
 #include <vector>
 #include <string.h>
 
-using namespace std;
-
 typedef unsigned int uint32;
 typedef unsigned char uchar;
 
@@ -24,7 +22,10 @@ typedef unsigned char uchar;
 // 7 - PTT_READ_SYMBOLS packet                             2..7
 // 8 - renumbered PROCESS_ATTACHED, PROCESS_DETACHED,      2..8
 //     PROCESS_SUSPENDED, TRACE_FULL
-#define PIN_PROTOCOL_VERSION 8
+// 9 - modified pin_regid_t so that now it is the same for 9
+//     both 32-bit and 64-bit pintools. We need this to
+//     support debugging of 32bit apps by ida64
+#define PIN_PROTOCOL_VERSION 9
 
 #ifdef IDA_SDK_VERSION
 // IDA specific declarations
@@ -56,6 +57,8 @@ typedef unsigned char uchar;
 #   define BADADDR -1
 #   define qvector std::vector
 #   define qstring std::string
+
+using namespace std;
 
 #if defined(_MSC_VER)
 typedef unsigned __int64 uint64;
@@ -438,7 +441,6 @@ enum pin_regid_t
   PINREG_EIP,
   PINREG_EFLAGS,
   PINREG_LAST_REG32 = PINREG_EFLAGS,
-#ifdef PIN_64
   PINREG64_R8,
   PINREG64_R9,
   PINREG64_R10,
@@ -447,13 +449,7 @@ enum pin_regid_t
   PINREG64_R13,
   PINREG64_R14,
   PINREG64_R15,
-  PINREG_LAST_GPREG = PINREG64_R15,
-#else
-  PINREG_LAST_GPREG = PINREG_LAST_REG32,
-#endif
-  PINREG_LAST_INTREG = PINREG_LAST_GPREG,
-  // mmx registers
-  PINREG_LAST_REG64 = PINREG_LAST_INTREG,
+
   // FPU registers
   PINREG_FIRST_REG128,
   PINREG_FIRST_FPREG = PINREG_FIRST_REG128,
@@ -469,6 +465,7 @@ enum pin_regid_t
   PINREG_STAT,
   PINREG_TAGS,
   PINREG_LAST_FPREG = PINREG_TAGS,
+
   // xmm registers
   PINREG_FIRST_XMMREG,
   PINREG_MXCSR = PINREG_FIRST_XMMREG,
@@ -480,7 +477,6 @@ enum pin_regid_t
   PINREG_XMM5,
   PINREG_XMM6,
   PINREG_XMM7,
-#ifdef PIN_64
   PINREG_XMM8,
   PINREG_XMM9,
   PINREG_XMM10,
@@ -489,11 +485,7 @@ enum pin_regid_t
   PINREG_XMM13,
   PINREG_XMM14,
   PINREG_XMM15,
-  PINREG_LAST_XMMREG = PINREG_XMM15,
-#else
-  PINREG_LAST_XMMREG = PINREG_XMM7,
-#endif
-  PINREG_LAST_REG128 = PINREG_LAST_XMMREG,
+  PINREG_LAST_REG128 = PINREG_XMM15,
 
   // MMX registers: used only for write_registers()
   PINREG_MMX0,
@@ -516,9 +508,6 @@ enum pin_regid_t
   PINREG_YMM5,
   PINREG_YMM6,
   PINREG_YMM7,
-#ifndef PIN_64
-  PINREG_LAST_YMMREG = PINREG_YMM7,
-#else
   PINREG_YMM8,
   PINREG_YMM9,
   PINREG_YMM10,
@@ -527,8 +516,17 @@ enum pin_regid_t
   PINREG_YMM13,
   PINREG_YMM14,
   PINREG_YMM15,
+#ifdef PIN_64
+  PINREG_LAST_GPREG = PINREG64_R15,
+  PINREG_LAST_XMMREG = PINREG_XMM15,
   PINREG_LAST_YMMREG = PINREG_YMM15,
+#else
+  PINREG_LAST_GPREG = PINREG_LAST_REG32,
+  PINREG_LAST_XMMREG = PINREG_XMM7,
+  PINREG_LAST_YMMREG = PINREG_YMM7,
 #endif
+  PINREG_LAST_INTREG = PINREG_LAST_GPREG,
+  PINREG_LAST_REG64 = PINREG_LAST_INTREG,
   PINREG_LAST_REG256 = PINREG_LAST_YMMREG,
 
   PINREG_MAX
@@ -671,7 +669,7 @@ inline bool pin_classregs_t::init(pin_register_class_t cls, bool is_32bit)
       break;
     case PIN_RC_YMM:
       firstnum = PINREG_FIRST_YMMREG;
-      lastnum = PINREG_LAST_YMMREG;
+      lastnum = is_32bit ? PINREG_YMM7 : PINREG_LAST_YMMREG;    //-V547 'is_32bit' is always true
       break;
     default:
       return false;   // bad class
@@ -695,31 +693,31 @@ inline bool pin_classregs_t::init(pin_regid_t firstnum, pin_regid_t lastnum)
 class pin_regbuf_t
 {
 public:
-  pin_regbuf_t(int clsmask, bool is_32bit = false)
-    : ncls(0), bufsize(0)                           { init(clsmask, is_32bit); }
-  size_t get_bufsize() const                        { return bufsize; }
-  inline int nclasses() const                       { return ncls; }
-  pin_classregs_t *get_class(int i)                 { return &clregs[i]; }
-  const pin_classregs_t *get_class(int i) const     { return &clregs[i]; }
-  pin_register_class_t get_classid(int i) const     { return classes[i]; }
+  pin_regbuf_t(int clsmask, bool is_32bit = false);
+  size_t get_bufsize() const                       { return bufsize; }
+  inline int nclasses() const                      { return ncls; }
+  pin_classregs_t *get_class(int i)                { return &clregs[i]; }
+  const pin_classregs_t *get_class(int i) const    { return &clregs[i]; }
+  pin_register_class_t get_classid(int i) const    { return classes[i]; }
   inline void setbuf(char *buf);
 
 private:
-  int ncls;
-  size_t bufsize;
+  int ncls = 0;
+  size_t bufsize = 0;
   pin_register_class_t classes[PIN_RC_NCLASSES];
   pin_classregs_t clregs[PIN_RC_NCLASSES];
   void init(int clsmask, bool is_32bit = false);
 };
 
 //--------------------------------------------------------------------------
-inline void pin_regbuf_t::init(int clsmask, bool is_32bit)
+inline pin_regbuf_t::pin_regbuf_t(int clsmask, bool is_32bit)
 {
 #ifndef PIN_64
   is_32bit = true;
 #endif
-  static pin_register_class_t all_cls[] =
+  static const pin_register_class_t all_cls[] =
     { PIN_RC_GENERAL, PIN_RC_SEGMENTS, PIN_RC_FPU, PIN_RC_XMM, PIN_RC_YMM };
+  memset(classes, 0, sizeof(classes));
   for ( size_t i = 0; i < sizeof(all_cls) / sizeof(all_cls[0]); ++i )
   {
     if ( (clsmask & all_cls[i]) != 0 )
@@ -818,6 +816,12 @@ struct idapin_segbase_packet_t: idapin_packet_t
   void set_value(int val)       { data = val;  }
 };
 
+#ifdef _WIN32
+#define USE_PIN_STLPORT (PIN_BUILD_NUMBER >= 76991)
+#else
+#define USE_PIN_STLPORT (PIN_BUILD_NUMBER >= 76991 && PIN_BUILD_NUMBER < 98612)
+#endif
+
 //--------------------------------------------------------------------------
 // symbol address & name in serialized buffer
 struct pin_symdef_t
@@ -829,7 +833,7 @@ struct pin_symdef_t
   const unsigned char *name() const      { return buf() + sizeof(uint64); }
   unsigned char *name()                  { return buf() + sizeof(uint64); }
   // PIN's stlport does not have data()
-#if defined(IDA_SDK_VERSION) || (PIN_BUILD_NUMBER >= 76991 && defined(TARGET_WINDOWS))
+#if defined(IDA_SDK_VERSION) || USE_PIN_STLPORT
   const unsigned char *buf() const       { return array.begin(); }
   unsigned char *buf()                   { return array.begin(); }
 #else
