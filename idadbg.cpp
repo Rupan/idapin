@@ -1,8 +1,8 @@
 /*
 
     IDA trace: PIN tool to communicate with IDA's debugger
-    Last supported linux version:   3.27-98718
-    Last supported windows version: 3.24-98612
+    Last supported linux version:   3.30-98830
+    Last supported windows version: 3.30-98830
 
 */
 
